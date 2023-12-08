@@ -1,0 +1,75 @@
+#!/usr/bin/env python3
+
+# TODO: license
+
+import argparse
+import json
+import os
+
+from partret.checker.explorer import Explorer
+from partret.util.logger import Logger
+from partret.util.setup import Setup
+
+def main():
+    """ main function with command line interface """
+
+    # command line argument parser
+    parser = argparse.ArgumentParser(
+        description='PartRet - Checking the correctness of partial retention for UPF files')
+    
+    # required arguments
+    parser.add_argument('config', type=str, help='configuration directory')
+
+    # checker selection
+    parser.add_argument('--setup', action='store_true',
+                        help='set up files and scripts required for the partial retention check')
+    parser.add_argument('--explore', type=str, default='',
+                        help='explore (minimize/complete) the retention register list')
+
+    # optional arguments
+    #parser.add_argument('--src', type=str, default='',
+    #                    help='source check point (to start)')
+    #parser.add_argument('--dst', type=str, default='solution.json',
+    #                    help='run-time check point (screenshot)')
+    parser.add_argument('-o', '--out', type=str, default='checker.log',
+                        help='log file')
+    parser.add_argument('-w', '--work', type=str, default='/tmp',
+                        help='dir for temp files')
+    parser.add_argument('-v', '--verbosity', type=int, default=0,
+                        help='verbosity level')
+
+    args = parser.parse_args()
+
+    # logger
+    logger = Logger(args.out)
+
+    # config
+    #if os.path.isfile(args.config):
+    #    with open(args.config, 'r') as f:
+    #        config = json.load(f)
+    
+    #if not config or not isinstance(config, dict):
+    #    return None
+
+    # update config with optional arguments
+    #config['cpsrc'] = args.src
+    #config['cpdst'] = args.dst
+
+    # set up
+    if args.setup:
+        Setup(args.config, logger, args.work, args.verbosity)
+        return None
+    
+    if args.explore:
+        explorer = Explorer(args.config, logger, args.work, args.verbosity)
+
+        if args.explore == 'minimize':
+            explorer.minimize_retention_list()
+        elif args.explore == 'complete':
+            explorer.complete_retention_list()
+        else:
+            logger.dump('Error: unknown exploration method {}'.format(args.explore))
+
+
+if __name__ == '__main__':
+    main()
