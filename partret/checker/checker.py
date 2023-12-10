@@ -9,16 +9,15 @@ import sys
 from partret.config import Config
 from partret.solver.jasper import JasperSolver
 from partret.util.generic import rename_to_test_sig
-from partret.util.image import Image
+#from partret.util.image import Image
 
 
 class Checker:
-    """ TODO """
+    """ Partial retention checker """
 
-    def __init__(self, config_dir, logger, workdir, verbosity=0):
+    def __init__(self, config, logger, workdir, verbosity=0):
         """ constructor """
         
-        self._config_dir = config_dir
         self._logger = logger
         self._workdir = workdir
         self._verbosity = verbosity
@@ -27,7 +26,14 @@ class Checker:
 
         self._clock = ""
         self._reset = ""
+        self._top_module = ""
 
+        self._standby_cond = ""
+        self._check_cond = ""
+
+        self._input_width_list = {}
+        self._output_width_list = {}
+        
         self._power_outputs = []
         self._non_power_outputs = []
 
@@ -35,13 +41,8 @@ class Checker:
         self._ret_regs = set()
         self._non_ret_regs = set()
         self._unknown_regs = set()
-
+        
         self._solver = JasperSolver(logger, workdir)
-
-        config_file = os.path.join(config_dir, 'config.json')
-        assert os.path.isfile(config_file)
-        with open(config_file, 'r') as f:
-            config = json.load(f)
         
         self._setup(config)
 
@@ -62,11 +63,14 @@ class Checker:
         self._reset = config['reset']
 
         # top module
-        if 'top_module' in config:
-            assert isinstance(config['top_module'], str)
-            self._top_module = config['top_module']
-        else:
-            self._logger.dump('Warning: top_module is not specified in the config file.')
+        assert isinstance(config['top_module'], str)
+        self._top_module = config['top_module']
+
+        #if 'top_module' in config:
+        #    assert isinstance(config['top_module'], str)
+        #    self._top_module = config['top_module']
+        #else:
+        #    self._logger.dump('Warning: top_module is not specified in the config file.')
         
         # clock and reset information (for Jasper)
         self._clock_reset_info = config['clock_reset_info']
@@ -75,19 +79,28 @@ class Checker:
         # standby condition
         assert isinstance(config['standby_condition'], str)
         self._standby_cond = config['standby_condition']
-
+        
         # check condition
         assert isinstance(config['check_condition'], str)
         self._check_cond = config['check_condition']
 
+        # formal constraints
+        assert os.path.isfile(config['formal_constraints'])
+        with open(config['formal_constraints'], 'r') as fr:
+            self._formal_constraints = fr.read().splitlines()
+
         # design information
-        design_info = os.path.join(self._config_dir, 'design_info.json')
+        design_info = os.path.join(self._workdir, 'design_info.json')
         if not os.path.isfile(design_info):
             self._get_design_info()
         with open(design_info, 'r') as f:
             design_info = json.load(f)
         
-        # output lists
+        # input and output lists
+        self._input_width_list = design_info['input_list']
+        self._output_width_list = design_info['output_list']
+
+        # power interface outputs
         assert isinstance(config['power_interface_outputs'], list)
         self._power_outputs = config['power_interface_outputs']
         self._non_power_outputs = list(set(design_info['output_list'].keys()) - set(self._power_outputs))
@@ -95,6 +108,7 @@ class Checker:
         # self._regs, self._ret_regs, self._non_ret_regs
         self._regs = set(design_info['register_list'].keys())
 
+        assert os.path.isfile(config['src'])
         with open(config['src'], 'r') as f:
             src = json.load(f)
 
@@ -111,10 +125,6 @@ class Checker:
         self._unknown_regs = get_regs(src['unknown'])
 
         self._check_reg_subsets()
-
-        # destination
-        assert isinstance(config['dst'], str)
-        self._dst = Image(self._logger, config['dst'])
 
     
     def _get_design_files(self, design_files=[]) -> list:
@@ -139,9 +149,81 @@ class Checker:
         return self._design_files
 
     
-    def _gen_ret_checker(self, ret_list):
+    def _gen_wrapper(self, ret_list=None):
+        """ Wrap up the original and power-collapsible designs """
+
+        # Require
+        # - top module
+        # - input, output, and register lists (from design_info.json)
+        # - standby condition
+        # - interface constraints (in SVA)
+
+        wire_declare_list = []
+
+        assignment_list = []
+        
+        golden_port_list = []
+        test_port_list = []
+
+        # input ports
+        for input, width in self._input_width_list.items():
+            wire_declare_list.append('wire [{}:0] {};'.format(width - 1, input))
+            golden_port_list.append('    .{}({}),'.format(input, input))
+            test_port_list.append('    .{}({}),'.format(input, input))
+        
+        # output ports
+        for output, width in self._output_width_list.items():
+            wire_declare_list.append('wire [{}:0] {}, {}_test;'.format(width - 1, output, output))
+            golden_port_list.append('    .{}({}),'.format(output, output))
+            test_port_list  .append('    .{}({}_test),'.format(output, output))
+        
+        # partial retention
+        for reg in self._regs:
+            reg_renamed = rename_to_test_sig(reg)
+            wire_declare_list.append('wire {}_ret;'.format(reg_renamed))
+            test_port_list.append('    .{}_ret({}_ret),'.format(reg_renamed, reg_renamed))
+            
+            if ret_list is not None:
+                if reg in ret_list:
+                    assignment_list.append('assign {}_ret = 1\'b1;'.format(reg_renamed))
+                else:
+                    assignment_list.append('assign {}_ret = 1\'b0;'.format(reg_renamed))
+        
+        # standby condition
+        wire_declare_list.append('wire standby_cond;')
+        test_port_list.append('    .standby_cond(standby_cond),')
+        assignment_list.append('assign standby_cond = {};'.format(self._standby_cond))
+
+        # Remove the last comma in the port lists
+        golden_port_list[-1] = golden_port_list[-1][:-1]
+        test_port_list[-1] = test_port_list[-1][:-1]
+
+        # TODO: formal verification or simulation?
+
+        # module instantiation
+        # TODO: automatically determine top module?
+        golden_inst = ['{} design_golden ('.format(self._top_module)] + golden_port_list + [');']
+        test_inst = ['{}_test design_test ('.format(self._top_module)] + test_port_list + [');']
+
+        cmds = ['module wrapper;', '']
+        cmds += wire_declare_list + ['']
+        cmds += assignment_list + ['']
+        cmds += golden_inst +  [''] + test_inst + ['']
+        cmds += ['// Formal constraints', ''] + self._formal_constraints + ['']
+        cmds += ['endmodule']
+
+        return cmds
+
+    
+    def _gen_ret_checker(self, ret_list=None):
         """ Generate a proof script (ret_checker.tcl) for the target retention list """
 
+        # Require
+        # - design files
+        # - clock and reset information
+        # - power interface outputs
+        # - check condition
+        
         cmds = []
 
         # 1. Set up the design
@@ -150,8 +232,8 @@ class Checker:
             cmds.append('analyze -sv {}'.format(file))
         
         cmds += [
-            'analyze -sv {}'.format(os.path.join(self._config_dir, 'design_test.v')),
-            'analyze -sv {}'.format(os.path.join(self._config_dir, 'wrapper.v')),
+            'analyze -sv {}'.format(os.path.join(self._workdir, 'design_test.v')),
+            'analyze -sv {}'.format(os.path.join(self._workdir, 'wrapper.v')),
             '',
             'elaborate -top wrapper',
             ''
@@ -164,13 +246,14 @@ class Checker:
         ]
 
         # 3. Assumptions
-        for reg in self._regs:
-            reg_renamed = rename_to_test_sig(reg)
-            if reg in ret_list:
-                cmds += [ 'assume -env {{ {}_ret == 1\'b1 }}'.format(reg_renamed) ]
-            else:
-                cmds += [ 'assume -env {{ {}_ret == 1\'b0 }}'.format(reg_renamed) ]
-        cmds += ['']
+        if ret_list is not None:
+            for reg in self._regs:
+                reg_renamed = rename_to_test_sig(reg)
+                if reg in ret_list:
+                    cmds += [ 'assume -env {{ {}_ret == 1\'b1 }}'.format(reg_renamed) ]
+                else:
+                    cmds += [ 'assume -env {{ {}_ret == 1\'b0 }}'.format(reg_renamed) ]
+            cmds += ['']
 
         # 4. Assertions
         power_out_equivs = [ '({} == {}_test)'.format(out, out) for out in self._power_outputs ]

@@ -15,8 +15,8 @@ class JasperSolver:
         """ Constructor """
 
         self._logger = logger
-        assert os.path.isdir(workdir)
         self._workdir = workdir
+    
     
     def _exec_jg(self, cmds : list):
         """ Launch Jasper with the commands """
@@ -35,7 +35,7 @@ class JasperSolver:
                     sys.exit(0)
 
         return res.stdout.decode('utf-8')
-
+    
     
     def _parse_jg_result(self, out_msg):
         """ Parse Jasper output """

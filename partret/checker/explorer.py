@@ -11,14 +11,19 @@ from partret.checker.checker import Checker
 from partret.config import Config
 from partret.solver.jasper import JasperSolver
 from partret.util.generic import rename_to_test_sig
+from partret.util.image import Image
 
 class Explorer(Checker):
     """ TODO """
 
-    def __init__(self, config_dir, logger, workdir, verbosity=0):
+    def __init__(self, config, logger, workdir, verbosity=0):
         """ constructor """
         
-        super().__init__(config_dir, logger, workdir, verbosity)
+        super().__init__(config, logger, workdir, verbosity)
+
+        # destination
+        assert isinstance(config['dst'], str)
+        self._dst = Image(self._logger, config['dst'])
 
         #self._unknown_regs = self._regs - self._ret_regs - self._non_ret_regs
         self._reg_batches = None
@@ -51,9 +56,11 @@ class Explorer(Checker):
             # record current progress
             self._report_current_progress()
 
-            # generate proof script
-            #ret_checker = self._gen_ret_checker(self._ret_regs | ret_by_cex)
-            ret_checker = self._gen_ret_checker(self._ret_regs)
+            # generate proof scripts
+            #self._gen_wrapper_script(self._ret_regs | ret_by_cex)
+            self._gen_wrapper_script(self._ret_regs)
+            #ret_checker = self._gen_ret_checker(self._ret_regs)
+            ret_checker = self._gen_ret_checker()
 
             # add commands for extracting cex trace info
             assert ret_checker[-1] == 'exit'
@@ -159,8 +166,10 @@ class Explorer(Checker):
 
             r_toret = self._ret_regs | (self._unknown_regs - target_regs)
 
-            # generate proof script
-            ret_checker = self._gen_ret_checker(r_toret)
+            # generate proof scripts
+            self._gen_wrapper_script(r_toret)
+            #ret_checker = self._gen_ret_checker(r_toret)
+            ret_checker = self._gen_ret_checker()
             #self._logger.dump('\n'.join(ret_checker))
 
             # launch Jasper
@@ -184,6 +193,17 @@ class Explorer(Checker):
 
             #sys.exit(0)
 
+    
+    def _gen_wrapper_script(self, ret_list):
+        """ Profile wrapper.v with a specific retention list """
+
+        wrapper = os.path.join(self._workdir, 'wrapper.v')
+        
+        wrapper_lines = self._gen_wrapper(ret_list)
+
+        with open(wrapper, 'w') as fw:
+            print('\n'.join(wrapper_lines), file=fw)
+    
     
     def _get_target_regs(self):
         """ Returns a batch (set) of target registers for the next retention check """

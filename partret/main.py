@@ -18,7 +18,7 @@ def main():
         description='PartRet - Checking the correctness of partial retention for UPF files')
     
     # required arguments
-    parser.add_argument('config', type=str, help='configuration directory')
+    parser.add_argument('config', type=str, help='configuration file')
 
     # checker selection
     parser.add_argument('--setup', action='store_true',
@@ -44,12 +44,15 @@ def main():
     logger = Logger(args.out)
 
     # config
-    #if os.path.isfile(args.config):
-    #    with open(args.config, 'r') as f:
-    #        config = json.load(f)
+    if os.path.isfile(args.config):
+        with open(args.config, 'r') as f:
+            config = json.load(f)
     
-    #if not config or not isinstance(config, dict):
-    #    return None
+    if not config or not isinstance(config, dict):
+        logger.dump('Error: unable to load the config file: {}!!!'.format(args.config))
+        return None
+
+    # TODO: update config based on the command line arguments
 
     # update config with optional arguments
     #config['cpsrc'] = args.src
@@ -57,11 +60,11 @@ def main():
 
     # set up
     if args.setup:
-        Setup(args.config, logger, args.work, args.verbosity)
+        Setup(config, logger, args.work, args.verbosity)
         return None
     
     if args.explore:
-        explorer = Explorer(args.config, logger, args.work, args.verbosity)
+        explorer = Explorer(config, logger, args.work, args.verbosity)
 
         if args.explore == 'minimize':
             explorer.minimize_retention_list()
