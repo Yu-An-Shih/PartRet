@@ -1,0 +1,18 @@
+{
+    "RTL": [ "design/mem_ctrl/rtl/" ],
+    "top_module": "mc_top",
+    "clock": "clk_i",
+    "reset": "rst_i",
+    "clock_reset_info": "design/mem_ctrl/config/clock_reset_info.tcl",
+    
+    "power_interface_outputs": [
+        "suspended_o"
+    ],
+    "standby_condition": "suspended_o && !resume_req_i",
+    "check_condition": "!suspended_o",
+
+    "formal_constraints": "design/mem_ctrl/config/aip.v",
+    
+    "src": "design/mem_ctrl/config/source.json",
+    "dst": "design/mem_ctrl/config/solution.json"
+}

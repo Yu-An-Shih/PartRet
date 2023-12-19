@@ -1,0 +1,19 @@
+{
+    "RTL": [ "design/spi/rtl/" ],
+    "top_module": "spi_qchannel",
+    "clock": "wb_clk_i",
+    "reset": "wb_rst_i",
+    "clock_reset_info": "design/spi/config/clock_reset_info.tcl",
+
+    "power_interface_outputs": [
+        "qacceptn",
+        "qdeny"
+    ],
+    "standby_condition": "!qreqn && !qacceptn",
+    "check_condition": "qacceptn",
+
+    "formal_constraints": "design/spi/config/aip.v",
+
+    "src": "design/spi/config/source.json",
+    "dst": "design/spi/config/solution_2.json"
+}

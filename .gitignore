@@ -6,7 +6,13 @@ __pycache__/
 jgproject*/
 
 # Design directories
-design/
+design/aquarius/
+design/spi/*
+!design/spi/config/
+!design/spi/rtl/
+design/mem_ctrl/*
+!design/mem_ctrl/config/
+!design/mem_ctrl/rtl/
 
 # Log files
 *.log
