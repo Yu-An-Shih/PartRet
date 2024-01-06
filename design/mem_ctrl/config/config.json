@@ -2,7 +2,16 @@
     "RTL": [ "design/mem_ctrl/rtl/" ],
     "top_module": "mc_top",
     "clock": "clk_i",
+    "secondary_clocks": { "mc_clk_i": 2 },
     "reset": "rst_i",
+    "reset_input_values": {
+        "wb_stb_i": "1'b0",
+        "wb_cyc_i": "1'b0",
+        "susp_req_i": "1'b0",
+        "resume_req_i": "1'b0",
+        "mc_data_pad_i": "{28'hzzz_zzzz, 2'b11, 2'b10}",
+        "mc_ack_pad_i": "1'b0"
+    },
     "clock_reset_info": "design/mem_ctrl/config/clock_reset_info.tcl",
     
     "power_interface_outputs": [
@@ -14,5 +23,5 @@
     "formal_constraints": "design/mem_ctrl/config/aip.v",
     
     "src": "design/mem_ctrl/config/source.json",
-    "dst": "design/mem_ctrl/config/solution.json"
+    "dst": "design/mem_ctrl/config/solution_2.json"
 }

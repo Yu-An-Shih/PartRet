@@ -9,6 +9,7 @@ import sys
 
 from partret.checker.checker import Checker
 from partret.config import Config
+from partret.solver.icarus import IcarusSolver
 from partret.solver.jasper import JasperSolver
 from partret.util.generic import rename_to_test_sig
 from partret.util.image import Image
@@ -27,6 +28,8 @@ class Explorer(Checker):
 
         #self._unknown_regs = self._regs - self._ret_regs - self._non_ret_regs
         self._reg_batches = None
+
+        self._iv_solver = IcarusSolver(config, logger, workdir)
     
 
     def minimize_retention_list(self):
@@ -44,58 +47,25 @@ class Explorer(Checker):
     def complete_retention_list(self):
         """ Expand an incomplete retention list to include all necessary retention registers """
         
-        # Temporary files
-        # - cex_info.tcl: records the register values during the last standby state
-        cex_info_file = os.path.join(self._workdir, 'cex_info.tcl')
-        
-        #self._unknown_regs = set(self._non_ret_regs)
-        #self._non_ret_regs = set()
+        # create proof script for Jasper
+        ret_checker = self._gen_ret_checker(get_trace_info=True)
 
-        ret_by_cex = set()
+        # Debug
+        with open(os.path.join(self._workdir, 'test.tcl'), 'w') as fw:
+            print('\n'.join(ret_checker), file=fw)
+        
+        ret_by_cex = []
         while len(self._unknown_regs) > 0:
             # record current progress
             self._report_current_progress()
 
-            # generate proof scripts
-            #self._gen_wrapper_script(self._ret_regs | ret_by_cex)
+            # generate formal testbench
             self._gen_wrapper_script(self._ret_regs)
-            #ret_checker = self._gen_ret_checker(self._ret_regs)
-            ret_checker = self._gen_ret_checker()
-
-            # add commands for extracting cex trace info
-            assert ret_checker[-1] == 'exit'
-            ret_checker.pop()
-            
-            ret_checker += [
-                '',
-                'set result [get_property_info output_equiv -list status]',
-                'if { $result != "cex" } {',
-                '   exit',
-                '}',
-                'visualize -violation -property output_equiv',
-                '',
-                'set sc [visualize -get_value standby_cond -radix 2]',
-                #'set index -1',
-                'for {set i [expr [llength $sc] - 1]} {$i >= 2} {incr i -1} {',
-                '   set prev_1 [lindex $sc [expr $i - 1]]',
-                '   set prev_2 [lindex $sc [expr $i - 2]]',
-                '   if { $prev_1 == "1\'b1" && $prev_2 == "1\'b0" } {',
-                '       set index $i',
-                '       break',
-                '   }',
-                '}',
-                'visualize -save -init_state {} -cycle [expr $index + 1] -force'.format(cex_info_file),
-                ''
-            ]
-
-            ret_checker.append('exit')
 
             # Debug
-            #with open(os.path.join(self._workdir, 'test.tcl'), 'w') as fw:
-            #    print('\n'.join(ret_checker), file=fw)
-            #self._logger.dump('\n'.join(ret_checker))
-            #sys.exit(0)
-            
+            import subprocess
+            subprocess.run(['cp', os.path.join(self._workdir, 'wrapper.v'), os.path.join(self._workdir, 'wrapper_formal.v')], stdout=subprocess.PIPE)
+
             # launch Jasper
             out_msg = self._solver._exec_jg(ret_checker)
 
@@ -112,46 +82,56 @@ class Explorer(Checker):
 
                 self._non_ret_regs |= self._unknown_regs
                 self._unknown_regs = set()
-            else:
-                # extend retention list
+            elif JasperSolver.is_cex(res):
+                # extract cex trace info
+                #input_vals = self._solver.extract_cex_trace_info(out_msg, [sig for sig in self._input_width_list if sig != self._clock and sig != self._reset and sig not in self._secondary_clocks])
+                input_vals = self._solver.extract_cex_trace_info(out_msg, list(self._input_width_list.keys()))
+                check_cond_vals = self._solver.extract_cex_trace_info(out_msg, ['check_cond'])['check_cond']
 
-                reg_vals_golden = {}
-                reg_vals_test = {}
+                #ret_candids = list(self._unknown_regs.copy())
+                ret_candids = self._solver.get_retention_candidates()
                 
-                with open(cex_info_file, 'r') as fr:
-                    for line in fr:
-                        line = line.strip()     # remove '\n' at the end
-                        reg = line.split()[0]
-                        val = line.split()[1]
+                # Debug
+                self._logger.dump('Retention candidates:')
+                self._logger.dump('\n'.join(ret_candids))
 
-                        if reg.startswith('design_golden'):
-                            reg_vals_golden['.'.join(reg.split('.')[1:])] = val
-                        elif reg.startswith('design_test'):
-                            reg_vals_test['.'.join(reg.split('.')[1:])] = val
-                        else:
-                            self._logger.dump('Warning: register {} is not contained in either the golden or test design'.format(reg))
+                new_ret = []
+                while len(ret_candids) > 0:
+                    candid = ret_candids.pop()
+
+                    # create simulation testbench
+                    self._gen_wrapper_script(self._ret_regs | set(new_ret + ret_candids), [check_cond_vals, input_vals])
+
+                    # simulate
+                    sim_msg = self._iv_solver.exec(self._get_design_files())
+
+                    # Debug
+                    #self._logger.dump('Remove {}:'.format(candid))
+                    #self._logger.dump(sim_msg.strip().split('\n')[-1])
+                    
+                    # extend retention list
+                    if IcarusSolver.is_cex(sim_msg):
+                        new_ret.append(candid)
+
+                assert len(new_ret) > 0
                 
-                reg_diff_vals = []
-                for reg_golden in reg_vals_golden:
-                    reg_test = rename_to_test_sig(reg_golden)
-                    if reg_test in reg_vals_test and reg_vals_golden[reg_golden] != reg_vals_test[reg_test]:
-                        reg_diff_vals.append(reg_golden)
-
                 self._logger.dump('Registers added to retention list:')
-                self._logger.dump('\n'.join(reg_diff_vals))
+                self._logger.dump('\n'.join(new_ret))
 
-                ret_by_cex |= set(reg_diff_vals)
-                self._ret_regs |= set(reg_diff_vals)
-                self._unknown_regs -= set(reg_diff_vals)
+                ret_by_cex += new_ret
+                self._ret_regs |= set(new_ret)
+                self._unknown_regs -= set(new_ret)
+            else:
+                self._logger.dump('Error: Failed to prove property within {}s.'.format(Config.DEFAULT_TIMEOUT))
+                self._logger.dump('The registers in the retention list are necessary but may not be suffincient.')
+                self._logger.dump('Exitting...')
+                sys.exit(0)
 
             # record the solution
             self._dst.take_screenshot(self._ret_regs, self._non_ret_regs, self._unknown_regs, {'ret_by_cex': ret_by_cex})
-
+        
         assert not self._unknown_regs
         assert self._regs == (self._ret_regs | self._non_ret_regs)
-
-        if self._verbosity == 0:
-            os.remove(cex_info_file)
 
     
     def _solve(self):
@@ -194,12 +174,12 @@ class Explorer(Checker):
             #sys.exit(0)
 
     
-    def _gen_wrapper_script(self, ret_list):
+    def _gen_wrapper_script(self, ret_list, trace_info=None):
         """ Profile wrapper.v with a specific retention list """
 
         wrapper = os.path.join(self._workdir, 'wrapper.v')
         
-        wrapper_lines = self._gen_wrapper(ret_list)
+        wrapper_lines = self._gen_wrapper(ret_list, trace_info)
 
         with open(wrapper, 'w') as fw:
             print('\n'.join(wrapper_lines), file=fw)

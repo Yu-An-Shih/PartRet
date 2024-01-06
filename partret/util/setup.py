@@ -176,7 +176,7 @@ class Setup(Checker):
         cmds += [
             'proc',
             'flatten',
-            'opt_clean',    # TODO: modify the original design instead?
+            #'opt_clean',    # TODO: modify the original design instead?
 
             'make_power_collapsible -reset_vals {}'.format(reset_values),
 

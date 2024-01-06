@@ -7,3 +7,7 @@ reset -expression {wb_rst_i} -non_resettable_regs 0
 
 # Interface constraints during reset - required for getting reset values
 assume -reset { !wb_stb_i && !wb_cyc_i } -name Assume_WISHBONE_Rule_3_20
+
+# Debug: Let standby_cond == 0 during reset
+# TODO: modify yosys pass
+assume -reset { qreqn }

@@ -25,8 +25,10 @@ class Checker:
         self._design_files = []
 
         self._clock = ""
+        self._secondary_clocks = {}
         self._reset = ""
         self._top_module = ""
+        self._reset_input_vals = {}
 
         self._standby_cond = ""
         self._check_cond = ""
@@ -58,6 +60,10 @@ class Checker:
         assert isinstance(config['clock'], str)
         self._clock = config['clock']
 
+        if 'secondary_clocks' in config:
+            assert isinstance(config['secondary_clocks'], dict)
+            self._secondary_clocks = config['secondary_clocks']
+
         # reset
         assert isinstance(config['reset'], str)
         self._reset = config['reset']
@@ -71,6 +77,12 @@ class Checker:
         #    self._top_module = config['top_module']
         #else:
         #    self._logger.dump('Warning: top_module is not specified in the config file.')
+
+        # input values during reset (for simulation)
+        # TODO: also use this for formal?
+        if 'reset_input_values' in config:
+            assert isinstance(config['reset_input_values'], dict)
+            self._reset_input_vals = config['reset_input_values']
         
         # clock and reset information (for Jasper)
         self._clock_reset_info = config['clock_reset_info']
@@ -97,7 +109,9 @@ class Checker:
             design_info = json.load(f)
         
         # input and output lists
-        self._input_width_list = design_info['input_list']
+        excluded = [self._clock, self._reset] + list(self._secondary_clocks.keys())
+        self._input_width_list = {input: width for input, width in design_info['input_list'].items() if input not in excluded}
+        #self._input_width_list = design_info['input_list']
         self._output_width_list = design_info['output_list']
 
         # power interface outputs
@@ -149,38 +163,76 @@ class Checker:
         return self._design_files
 
     
-    def _gen_wrapper(self, ret_list=None):
+    def _gen_wrapper(self, ret_list=None, trace_info=None):
         """ Wrap up the original and power-collapsible designs """
 
-        # Require
-        # - top module
-        # - input, output, and register lists (from design_info.json)
-        # - standby condition
-        # - interface constraints (in SVA)
-
-        wire_declare_list = []
+        IsSimulation = trace_info is not None
+        
+        sig_declare_list = []
 
         assignment_list = []
-        
+
         golden_port_list = []
         test_port_list = []
+        
+        # clock and reset
+        if IsSimulation:
+            sig_declare_list += [
+                #'reg {} = 0;'.format(self._clock),
+                'reg {} = 1;'.format(self._clock),
+                'reg {} = 0;'.format(self._reset)
+            ]
+        else:
+            sig_declare_list += [
+                'wire {};'.format(self._clock),
+                'wire {};'.format(self._reset)
+            ]
+        
+        golden_port_list += [
+            '    .{}({}),'.format(self._clock, self._clock),
+            '    .{}({}),'.format(self._reset, self._reset)
+        ]
+        test_port_list += [
+            '    .{}({}),'.format(self._clock, self._clock),
+            '    .{}({}),'.format(self._reset, self._reset)
+        ]
 
+        for clk in self._secondary_clocks:
+            if IsSimulation:
+                sig_declare_list.append('reg {} = 0;'.format(clk))
+            else:
+                sig_declare_list.append('wire {};'.format(clk))
+            
+            golden_port_list.append('    .{}({}),'.format(clk, clk))
+            test_port_list.append('    .{}({}),'.format(clk, clk))
+        
         # input ports
         for input, width in self._input_width_list.items():
-            wire_declare_list.append('wire [{}:0] {};'.format(width - 1, input))
+            #if input == self._clock or input == self._reset or input in self._secondary_clocks:
+            #    continue
+            
+            if IsSimulation:
+                if input in self._reset_input_vals:
+                    sig_declare_list.append('reg [{}:0] {} = {};'.format(width - 1, input, self._reset_input_vals[input]))
+                else:
+                    sig_declare_list.append('reg [{}:0] {};'.format(width - 1, input))
+            else:
+                sig_declare_list.append('wire [{}:0] {};'.format(width - 1, input))
+            
             golden_port_list.append('    .{}({}),'.format(input, input))
             test_port_list.append('    .{}({}),'.format(input, input))
         
         # output ports
         for output, width in self._output_width_list.items():
-            wire_declare_list.append('wire [{}:0] {}, {}_test;'.format(width - 1, output, output))
+            sig_declare_list.append('wire [{}:0] {}, {}_test;'.format(width - 1, output, output))
             golden_port_list.append('    .{}({}),'.format(output, output))
             test_port_list  .append('    .{}({}_test),'.format(output, output))
         
         # partial retention
         for reg in self._regs:
             reg_renamed = rename_to_test_sig(reg)
-            wire_declare_list.append('wire {}_ret;'.format(reg_renamed))
+            
+            sig_declare_list.append('wire {}_ret;'.format(reg_renamed))
             test_port_list.append('    .{}_ret({}_ret),'.format(reg_renamed, reg_renamed))
             
             if ret_list is not None:
@@ -190,15 +242,17 @@ class Checker:
                     assignment_list.append('assign {}_ret = 1\'b0;'.format(reg_renamed))
         
         # standby condition
-        wire_declare_list.append('wire standby_cond;')
+        sig_declare_list.append('wire standby_cond;')
         test_port_list.append('    .standby_cond(standby_cond),')
         assignment_list.append('assign standby_cond = {};'.format(self._standby_cond))
+
+        # check condition
+        sig_declare_list.append('wire check_cond;')
+        assignment_list.append('assign check_cond = {};'.format(self._check_cond))
 
         # Remove the last comma in the port lists
         golden_port_list[-1] = golden_port_list[-1][:-1]
         test_port_list[-1] = test_port_list[-1][:-1]
-
-        # TODO: formal verification or simulation?
 
         # module instantiation
         # TODO: automatically determine top module?
@@ -206,16 +260,112 @@ class Checker:
         test_inst = ['{}_test design_test ('.format(self._top_module)] + test_port_list + [');']
 
         cmds = ['module wrapper;', '']
-        cmds += wire_declare_list + ['']
+        cmds += sig_declare_list + ['']
         cmds += assignment_list + ['']
         cmds += golden_inst +  [''] + test_inst + ['']
-        cmds += ['// Formal constraints', ''] + self._formal_constraints + ['']
+
+        if IsSimulation:
+            cmds += ['// Simulation testbench', ''] + self._gen_testbench(trace_info) + ['']
+            pass
+        else:
+            cmds += ['// Formal constraints', ''] + self._formal_constraints + ['']
+        
         cmds += ['endmodule']
 
         return cmds
+    
+
+    def _gen_testbench(self, trace_info: list) -> list:
+        """ TODO """
+
+        check_cond_vals = trace_info[0]
+        input_vals = trace_info[1]
+
+        # Debug
+        #self._logger.dump('check_cond_vals: {}'.format(check_cond_vals))
+        #self._logger.dump('input_vals: {}'.format(input_vals))
+        
+        clk_progress = [ 'always #5 {} = ~{};'.format(self._clock, self._clock) ]
+
+        max_factor = 1
+        for clk, factor in self._secondary_clocks.items():
+            clk_progress += [ 'always #{} {} = ~{};'.format(5 * factor, clk, clk) ]
+            max_factor = max(max_factor, factor)
+        
+        clk_progress += [ '' ]
+        
+        # clk_progress = [
+        #     'always begin',
+        #     '    #5 {} = ~{};'.format(self._clock, self._clock),
+        #     'end',
+        #     ''
+        # ]
+
+        # TODO: only initialize non-resettable registers
+        init = [ '// Initialize all registers to 0' ]
+        for reg in self._regs:
+            reg_renamed = rename_to_test_sig(reg)
+            init += [
+                'design_golden.{} = 0;'.format(reg),
+                'design_test.{} = 0;'.format(reg_renamed)
+            ]
+        init += [ '' ]
+
+        reset = [
+            '// Reset',
+            '#1;',
+            '{} = 1\'b1;'.format(self._reset),
+            'repeat ({}) @(posedge {});'.format(10 * max_factor, self._clock),  # TODO: config reset cycles
+            #'#1;',
+            #'{} = 1\'b0;'.format(self._reset),
+            ''
+        ]
+
+        cycles = []
+        out_diff = ' | '.join(['({} != {}_test)'.format(out, out) for out in self._output_width_list.keys()])
+        pow_out_diff = ' | '.join(['({} != {}_test)'.format(out, out) for out in self._power_outputs])
+        
+        trace_len = len(check_cond_vals)
+        for i in range(trace_len):
+            cycle = [
+                '// Cycle {}'.format(i+1),
+                '#1;'
+            ]
+
+            if i == 0:
+                cycle.append('{} = 1\'b0;'.format(self._reset))
+            
+            for input in input_vals:
+                cycle.append('{} = {};'.format(input, input_vals[input][i]))
+            
+            cycle += [
+                '',
+                '@(negedge {});'.format(self._clock),
+                #'$display("cycle {}");'.format(i+1),
+                'if ({}) begin'.format( pow_out_diff if (check_cond_vals[i] == '1\'b0') else out_diff ),
+                '    $display("cex");',
+                #'    $display("cex{}");'.format(i+1),
+                '    $finish;',
+                'end',
+                '',
+                '@(posedge {});'.format(self._clock),
+                ''
+            ]
+            
+            cycles += cycle
+        
+        cycles += [
+            '// Done',
+            '$display("proven");',
+            '$finish;'
+        ]
+
+        trace = ['initial begin'] + ['    {}'.format(line) for line in init + reset + cycles] + ['end']
+
+        return clk_progress + trace
 
     
-    def _gen_ret_checker(self, ret_list=None):
+    def _gen_ret_checker(self, ret_list=None, get_trace_info=False):
         """ Generate a proof script (ret_checker.tcl) for the target retention list """
 
         # Require
@@ -300,6 +450,46 @@ class Checker:
             'get_property_info output_equiv -list min_length',
             ''
         ]
+
+        # Get CEX trace information
+        if get_trace_info:
+            cmds += [
+                'set result [get_property_info output_equiv -list status]',
+                'if { $result != "cex" } {',
+                '   exit',
+                '}',
+                'visualize -violation -property output_equiv',
+                ''
+            ]
+        
+            for input in self._input_width_list:
+                #if input == self._clock or input == self._reset:
+                #    continue
+
+                cmds.append('visualize -get_value {} -radix 2'.format(input))
+            
+            cmds.append('visualize -get_value check_cond -radix 2')
+
+            # Print the standby-state register values
+            cmds += [
+                '',
+                'set sc [visualize -get_value standby_cond -radix 2]',
+                'set indices [list]',
+                'for {set i 2} {$i < [llength $sc]} {incr i} {',
+                '   set prev_1 [lindex $sc [expr $i - 1]]',
+                '   set prev_2 [lindex $sc [expr $i - 2]]',
+                '   if { $prev_1 == "1\'b1" && $prev_2 == "1\'b0" } {',
+                '       lappend indices $i',
+                '   }',
+                '}',
+                '',
+                'for {set i 0} {$i < [llength $indices]} {incr i} {',
+                '   set index [lindex $indices $i]',
+                '   set filename "cex_info_$i.tcl"',
+                '   visualize -save -init_state {} -cycle [expr $index + 1] -force'.format(os.path.join(self._workdir, 'cex_info_$i.tcl')),
+                '}',
+                ''
+            ]
 
         cmds.append('exit')
 
