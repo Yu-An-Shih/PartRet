@@ -48,11 +48,12 @@ class Explorer(Checker):
         """ Expand an incomplete retention list to include all necessary retention registers """
         
         # create proof script for Jasper
+        # TODO: modify this
         ret_checker = self._gen_ret_checker(get_trace_info=True)
 
         # Debug
-        with open(os.path.join(self._workdir, 'test.tcl'), 'w') as fw:
-            print('\n'.join(ret_checker), file=fw)
+        #with open(os.path.join(self._workdir, 'test.tcl'), 'w') as fw:
+        #    print('\n'.join(ret_checker), file=fw)
         
         ret_by_cex = []
         while len(self._unknown_regs) > 0:
@@ -60,18 +61,19 @@ class Explorer(Checker):
             self._report_current_progress()
 
             # generate formal testbench
+            # TODO: modify this
             self._gen_wrapper_script(self._ret_regs)
 
             # Debug
             import subprocess
-            subprocess.run(['cp', os.path.join(self._workdir, 'wrapper.v'), os.path.join(self._workdir, 'wrapper_formal.v')], stdout=subprocess.PIPE)
+            subprocess.run(['cp', os.path.join(self._workdir, 'wrapper.v'), os.path.join(self._workdir, 'wrapper_formal.sv')], stdout=subprocess.PIPE)
 
             # launch Jasper
             out_msg = self._solver._exec_jg(ret_checker)
 
             # Debug
-            #with open(os.path.join(self._workdir, 'out_msg.txt'), 'w') as fw:
-            #    print(out_msg, file=fw)
+            with open(os.path.join(self._workdir, 'out_msg.txt'), 'w') as fw:
+                print(out_msg, file=fw)
 
             # parse Jasper output
             res = self._solver._parse_jg_result(out_msg)
@@ -84,12 +86,11 @@ class Explorer(Checker):
                 self._unknown_regs = set()
             elif JasperSolver.is_cex(res):
                 # extract cex trace info
-                #input_vals = self._solver.extract_cex_trace_info(out_msg, [sig for sig in self._input_width_list if sig != self._clock and sig != self._reset and sig not in self._secondary_clocks])
                 input_vals = self._solver.extract_cex_trace_info(out_msg, list(self._input_width_list.keys()))
                 check_cond_vals = self._solver.extract_cex_trace_info(out_msg, ['check_cond'])['check_cond']
 
                 #ret_candids = list(self._unknown_regs.copy())
-                ret_candids = self._solver.get_retention_candidates()
+                ret_candids = self._solver.get_retention_candidates(out_msg)
                 
                 # Debug
                 self._logger.dump('Retention candidates:')
@@ -147,7 +148,9 @@ class Explorer(Checker):
             r_toret = self._ret_regs | (self._unknown_regs - target_regs)
 
             # generate proof scripts
+            # TODO: modify this
             self._gen_wrapper_script(r_toret)
+            # TODO: modify this
             #ret_checker = self._gen_ret_checker(r_toret)
             ret_checker = self._gen_ret_checker()
             #self._logger.dump('\n'.join(ret_checker))

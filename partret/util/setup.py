@@ -83,6 +83,7 @@ class Setup(Checker):
             cmds.append('elaborate')
         
         # source clock and reset information
+        # TODO: modify this
         cmds.append('source {}'.format(self._clock_reset_info))
         
         # collect design information

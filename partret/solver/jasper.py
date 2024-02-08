@@ -139,8 +139,30 @@ class JasperSolver:
         return trace_info
     
 
-    def get_retention_candidates(self) -> list:
-        """ TODO """
+    def get_retention_candidates(self, out_msg: str) -> list:
+        """ Extract the candidate retention registers from the CEX output message """
+
+        ##############################
+        # Example:
+        #   [<embedded>] % puts $candid_regs
+        #   wb_dma_top_inst.u0.csr_r wb_dma_top_inst.u0.u0.ch_busy ...
+        #   [<embedded>] % ...
+        ##############################
+        prefix = 'puts $candid_regs'
+        suffix = '\n[<embedded>]'
+
+        if prefix not in out_msg:
+            self._logger.dump('Error: candid_regs is not found in the CEX output')
+            sys.exit(0)
+        
+        candid_regs_str = out_msg.split(prefix)[1]
+        candid_regs_str = candid_regs_str.split(suffix)[0]
+        candid_regs_str = candid_regs_str.strip()
+
+        return candid_regs_str.split()
+
+    
+    """def get_retention_candidates(self) -> list:
 
         reg_diff_vals = []
 
@@ -168,11 +190,13 @@ class JasperSolver:
                 if reg_test in reg_vals_test and reg_vals_golden[reg_golden] != reg_vals_test[reg_test]:
                     reg_diff_vals.append(reg_golden)
             
+            assert len(reg_diff_vals) > 0
+            
             os.remove(cex_info_file)
             i += 1
         
         return list(set(reg_diff_vals))
-    
+    """
     
     @staticmethod
     def is_proven(results: dict) -> bool:

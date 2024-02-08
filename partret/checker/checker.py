@@ -60,6 +60,7 @@ class Checker:
         assert isinstance(config['clock'], str)
         self._clock = config['clock']
 
+        # TODO: get rid of this
         if 'secondary_clocks' in config:
             assert isinstance(config['secondary_clocks'], dict)
             self._secondary_clocks = config['secondary_clocks']
@@ -85,6 +86,7 @@ class Checker:
             self._reset_input_vals = config['reset_input_values']
         
         # clock and reset information (for Jasper)
+        # TODO: get rid of this
         self._clock_reset_info = config['clock_reset_info']
         assert os.path.isfile(self._clock_reset_info)
         
@@ -97,6 +99,7 @@ class Checker:
         self._check_cond = config['check_condition']
 
         # formal constraints
+        # TODO: get rid of this
         assert os.path.isfile(config['formal_constraints'])
         with open(config['formal_constraints'], 'r') as fr:
             self._formal_constraints = fr.read().splitlines()
@@ -111,7 +114,6 @@ class Checker:
         # input and output lists
         excluded = [self._clock, self._reset] + list(self._secondary_clocks.keys())
         self._input_width_list = {input: width for input, width in design_info['input_list'].items() if input not in excluded}
-        #self._input_width_list = design_info['input_list']
         self._output_width_list = design_info['output_list']
 
         # power interface outputs
@@ -268,6 +270,7 @@ class Checker:
             cmds += ['// Simulation testbench', ''] + self._gen_testbench(trace_info) + ['']
             pass
         else:
+            # TODO: get rid of this
             cmds += ['// Formal constraints', ''] + self._formal_constraints + ['']
         
         cmds += ['endmodule']
@@ -302,7 +305,7 @@ class Checker:
         # ]
 
         # TODO: only initialize non-resettable registers
-        init = [ '// Initialize all registers to 0' ]
+        init = [ '// Initialize all registers to 0', '#1;' ]
         for reg in self._regs:
             reg_renamed = rename_to_test_sig(reg)
             init += [
@@ -313,7 +316,7 @@ class Checker:
 
         reset = [
             '// Reset',
-            '#1;',
+            #'#1;',
             '{} = 1\'b1;'.format(self._reset),
             'repeat ({}) @(posedge {});'.format(10 * max_factor, self._clock),  # TODO: config reset cycles
             #'#1;',
@@ -390,6 +393,7 @@ class Checker:
         ]
 
         # 2. Source clock and reset information
+        # TODO: modify this
         cmds += [
             'source {}'.format(self._clock_reset_info),
             ''
@@ -463,14 +467,46 @@ class Checker:
             ]
         
             for input in self._input_width_list:
-                #if input == self._clock or input == self._reset:
-                #    continue
-
                 cmds.append('visualize -get_value {} -radix 2'.format(input))
             
             cmds.append('visualize -get_value check_cond -radix 2')
 
-            # Print the standby-state register values
+            # Print the candidate retention registers
+            cmds += [
+                '',
+                'set sc [visualize -get_value standby_cond -radix 2]',
+                'set indices [list]',
+                'for {set i 2} {$i < [llength $sc]} {incr i} {',
+                '   set prev_1 [lindex $sc [expr $i - 1]]',
+                '   set prev_2 [lindex $sc [expr $i - 2]]',
+                '   if { $prev_1 == "1\'b1" && $prev_2 == "1\'b0" } {',
+                '       lappend indices $i',
+                '   }',
+                '}',
+                '',
+                'set reglist [ get_design_info -instance design_golden -list register ]',
+                '',
+                'set candid_regs [list]',
+                'for {set i 0} {$i < [llength $indices]} {incr i} {',
+                '    set cycle [expr [lindex $indices $i] + 1]',
+                '    foreach reg $reglist {',
+                '        # remove "design_golden."',
+                '        set reg [string range $reg 14 end]',
+                '        set reg_test [string map { "." "__" "[" "__" "]" "" } $reg]',
+                '',
+                '        set golden_val [ visualize -get_value design_golden.$reg $cycle -radix 2 ]',
+                '        set test_val [ visualize -get_value design_test.$reg_test $cycle -radix 2 ]',
+                '        if { $golden_val != $test_val } {',
+                '            lappend candid_regs $reg',
+                '        }',
+                '    }',
+                '}',
+                '',
+                'puts $candid_regs',
+                ''
+            ]
+            
+            """# Print the standby-state register values
             cmds += [
                 '',
                 'set sc [visualize -get_value standby_cond -radix 2]',
@@ -489,8 +525,9 @@ class Checker:
                 '   visualize -save -init_state {} -cycle [expr $index + 1] -force'.format(os.path.join(self._workdir, 'cex_info_$i.tcl')),
                 '}',
                 ''
-            ]
+            ]"""
 
+        # TODO: get rid of this
         cmds.append('exit')
 
         return cmds
