@@ -60,7 +60,6 @@ class Checker:
         assert isinstance(config['clock'], str)
         self._clock = config['clock']
 
-        # TODO: get rid of this
         if 'secondary_clocks' in config:
             assert isinstance(config['secondary_clocks'], dict)
             self._secondary_clocks = config['secondary_clocks']
@@ -79,16 +78,10 @@ class Checker:
         #else:
         #    self._logger.dump('Warning: top_module is not specified in the config file.')
 
-        # input values during reset (for simulation)
-        # TODO: also use this for formal?
+        # input values during reset
         if 'reset_input_values' in config:
             assert isinstance(config['reset_input_values'], dict)
             self._reset_input_vals = config['reset_input_values']
-        
-        # clock and reset information (for Jasper)
-        # TODO: get rid of this
-        self._clock_reset_info = config['clock_reset_info']
-        assert os.path.isfile(self._clock_reset_info)
         
         # standby condition
         assert isinstance(config['standby_condition'], str)
@@ -368,7 +361,7 @@ class Checker:
         return clk_progress + trace
 
     
-    def _gen_ret_checker(self, ret_list=None, get_trace_info=False):
+    def _gen_ret_checker(self, ret_list=None):
         """ Generate a proof script (ret_checker.tcl) for the target retention list """
 
         # Require
@@ -377,7 +370,12 @@ class Checker:
         # - power interface outputs
         # - check condition
         
-        cmds = []
+        cmds = [
+            '# This is the Jasper script for the self composition check.',
+            '# This script would be used by the retention explorer tool, ',
+            '# so please only modify it as instructed (marked with "# TODO: ...") if you want to call the explorer.',
+            ''
+        ]
 
         # 1. Set up the design
         design_files = self._get_design_files()
@@ -393,13 +391,26 @@ class Checker:
         ]
 
         # 2. Source clock and reset information
-        # TODO: modify this
+        cmds.append('clock {}'.format(self._clock))
+
+        for clk, factor in self._secondary_clocks.items():
+            cmds.append('clock {} -factor {}'.format(clk, factor))
+        
+        cmds.append('reset {} -non_resettable_regs 0'.format(self._reset))
+
         cmds += [
-            'source {}'.format(self._clock_reset_info),
+            '',
+            '# TODO: You can configure the changing rate of inputs.',
             ''
         ]
 
+        # Assumptions during reset
+        for input, val in self._reset_input_vals.items():
+            cmds.append('assume -reset {{ {} == {} }}'.format(input, val))
+        cmds.append('')
+
         # 3. Assumptions
+        # TODO: get rid of this
         if ret_list is not None:
             for reg in self._regs:
                 reg_renamed = rename_to_test_sig(reg)
@@ -416,6 +427,7 @@ class Checker:
         cmds += [
             'assert -disable {.*} -regexp',
             '',
+            '# TODO: You can modify the expression part of this assertion.',
             'assert -name output_equiv {{ @(posedge {}) disable iff ({})'.format(self._clock, self._reset),
             '    ( ' + ' &&\n    '.join(power_out_equivs) + ' ) &&',
             '    ( !({}) ||'.format(self._check_cond),
@@ -454,81 +466,6 @@ class Checker:
             'get_property_info output_equiv -list min_length',
             ''
         ]
-
-        # Get CEX trace information
-        if get_trace_info:
-            cmds += [
-                'set result [get_property_info output_equiv -list status]',
-                'if { $result != "cex" } {',
-                '   exit',
-                '}',
-                'visualize -violation -property output_equiv',
-                ''
-            ]
-        
-            for input in self._input_width_list:
-                cmds.append('visualize -get_value {} -radix 2'.format(input))
-            
-            cmds.append('visualize -get_value check_cond -radix 2')
-
-            # Print the candidate retention registers
-            cmds += [
-                '',
-                'set sc [visualize -get_value standby_cond -radix 2]',
-                'set indices [list]',
-                'for {set i 2} {$i < [llength $sc]} {incr i} {',
-                '   set prev_1 [lindex $sc [expr $i - 1]]',
-                '   set prev_2 [lindex $sc [expr $i - 2]]',
-                '   if { $prev_1 == "1\'b1" && $prev_2 == "1\'b0" } {',
-                '       lappend indices $i',
-                '   }',
-                '}',
-                '',
-                'set reglist [ get_design_info -instance design_golden -list register ]',
-                '',
-                'set candid_regs [list]',
-                'for {set i 0} {$i < [llength $indices]} {incr i} {',
-                '    set cycle [expr [lindex $indices $i] + 1]',
-                '    foreach reg $reglist {',
-                '        # remove "design_golden."',
-                '        set reg [string range $reg 14 end]',
-                '        set reg_test [string map { "." "__" "[" "__" "]" "" } $reg]',
-                '',
-                '        set golden_val [ visualize -get_value design_golden.$reg $cycle -radix 2 ]',
-                '        set test_val [ visualize -get_value design_test.$reg_test $cycle -radix 2 ]',
-                '        if { $golden_val != $test_val } {',
-                '            lappend candid_regs $reg',
-                '        }',
-                '    }',
-                '}',
-                '',
-                'puts $candid_regs',
-                ''
-            ]
-            
-            """# Print the standby-state register values
-            cmds += [
-                '',
-                'set sc [visualize -get_value standby_cond -radix 2]',
-                'set indices [list]',
-                'for {set i 2} {$i < [llength $sc]} {incr i} {',
-                '   set prev_1 [lindex $sc [expr $i - 1]]',
-                '   set prev_2 [lindex $sc [expr $i - 2]]',
-                '   if { $prev_1 == "1\'b1" && $prev_2 == "1\'b0" } {',
-                '       lappend indices $i',
-                '   }',
-                '}',
-                '',
-                'for {set i 0} {$i < [llength $indices]} {incr i} {',
-                '   set index [lindex $indices $i]',
-                '   set filename "cex_info_$i.tcl"',
-                '   visualize -save -init_state {} -cycle [expr $index + 1] -force'.format(os.path.join(self._workdir, 'cex_info_$i.tcl')),
-                '}',
-                ''
-            ]"""
-
-        # TODO: get rid of this
-        cmds.append('exit')
 
         return cmds
     

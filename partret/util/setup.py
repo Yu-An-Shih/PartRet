@@ -83,8 +83,17 @@ class Setup(Checker):
             cmds.append('elaborate')
         
         # source clock and reset information
-        # TODO: modify this
-        cmds.append('source {}'.format(self._clock_reset_info))
+        cmds.append('clock {}'.format(self._clock))
+
+        for clk, factor in self._secondary_clocks.items():
+            cmds.append('clock {} -factor {}'.format(clk, factor))
+        
+        cmds.append('reset {} -non_resettable_regs 0'.format(self._reset))
+
+        # Assumptions during reset
+        for input, val in self._reset_input_vals.items():
+            cmds.append('assume -reset {{ {} == {} }}'.format(input, val))
+        cmds.append('')
         
         # collect design information
         cmds += [

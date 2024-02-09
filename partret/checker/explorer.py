@@ -20,6 +20,10 @@ class Explorer(Checker):
     def __init__(self, config, logger, workdir, verbosity=0):
         """ constructor """
         
+        # Sanity checks
+        self._retention_checker = os.path.join(workdir, 'ret_checker.tcl')
+        assert os.path.isfile(self._retention_checker)
+        
         super().__init__(config, logger, workdir, verbosity)
 
         # destination
@@ -48,8 +52,11 @@ class Explorer(Checker):
         """ Expand an incomplete retention list to include all necessary retention registers """
         
         # create proof script for Jasper
-        # TODO: modify this
-        ret_checker = self._gen_ret_checker(get_trace_info=True)
+        with open(self._retention_checker, 'r') as fr:
+            ret_checker = [ line.strip('\n') for line in fr.readlines() ]
+        
+        ret_checker += self._gen_trace_info_getter()
+        ret_checker += ['exit']
 
         # Debug
         #with open(os.path.join(self._workdir, 'test.tcl'), 'w') as fw:
@@ -65,15 +72,15 @@ class Explorer(Checker):
             self._gen_wrapper_script(self._ret_regs)
 
             # Debug
-            import subprocess
-            subprocess.run(['cp', os.path.join(self._workdir, 'wrapper.v'), os.path.join(self._workdir, 'wrapper_formal.sv')], stdout=subprocess.PIPE)
+            #import subprocess
+            #subprocess.run(['cp', os.path.join(self._workdir, 'wrapper.v'), os.path.join(self._workdir, 'wrapper_formal.sv')], stdout=subprocess.PIPE)
 
             # launch Jasper
             out_msg = self._solver._exec_jg(ret_checker)
 
             # Debug
-            with open(os.path.join(self._workdir, 'out_msg.txt'), 'w') as fw:
-                print(out_msg, file=fw)
+            #with open(os.path.join(self._workdir, 'out_msg.txt'), 'w') as fw:
+            #    print(out_msg, file=fw)
 
             # parse Jasper output
             res = self._solver._parse_jg_result(out_msg)
@@ -92,9 +99,10 @@ class Explorer(Checker):
                 #ret_candids = list(self._unknown_regs.copy())
                 ret_candids = self._solver.get_retention_candidates(out_msg)
                 
-                # Debug
-                self._logger.dump('Retention candidates:')
-                self._logger.dump('\n'.join(ret_candids))
+                # Print the candidate retention registers
+                if self._verbosity > 0:
+                    self._logger.dump('Retention candidates:')
+                    self._logger.dump('\n'.join(ret_candids))
 
                 new_ret = []
                 while len(ret_candids) > 0:
@@ -124,7 +132,7 @@ class Explorer(Checker):
                 self._unknown_regs -= set(new_ret)
             else:
                 self._logger.dump('Error: Failed to prove property within {}s.'.format(Config.DEFAULT_TIMEOUT))
-                self._logger.dump('The registers in the retention list are necessary but may not be suffincient.')
+                self._logger.dump('The registers in the retention list are necessary but may not be sufficient.')
                 self._logger.dump('Exitting...')
                 sys.exit(0)
 
@@ -138,6 +146,12 @@ class Explorer(Checker):
     def _solve(self):
         """ Analyze the registers in self._unknown_regs and put them into self._ret_regs/self._non_ret_regs """
         
+        # create proof script for Jasper
+        with open(self._retention_checker, 'r') as fr:
+            ret_checker = [ line.strip('\n') for line in fr.readlines() ]
+        
+        ret_checker += ['exit']
+        
         target_regs = self._get_target_regs()
         while target_regs:
             # record current progress
@@ -150,10 +164,6 @@ class Explorer(Checker):
             # generate proof scripts
             # TODO: modify this
             self._gen_wrapper_script(r_toret)
-            # TODO: modify this
-            #ret_checker = self._gen_ret_checker(r_toret)
-            ret_checker = self._gen_ret_checker()
-            #self._logger.dump('\n'.join(ret_checker))
 
             # launch Jasper
             out_msg = self._solver._exec_jg(ret_checker)
@@ -165,16 +175,20 @@ class Explorer(Checker):
 
             if JasperSolver.is_proven(res):
                 self._non_ret_regs |= target_regs
-            elif len(target_regs) == 1:
-                self._ret_regs |= target_regs
+            elif JasperSolver.is_cex(res):
+                if len(target_regs) == 1:
+                    self._ret_regs |= target_regs
+            else:
+                self._logger.dump('Error: Failed to prove property within {}s.'.format(Config.DEFAULT_TIMEOUT))
+                self._logger.dump('The registers in the retention list are sufficient but may not necessary.')
+                self._logger.dump('Exitting...')
+                sys.exit(0)
             
             self._unknown_regs -= (self._ret_regs | self._non_ret_regs)
             target_regs = self._get_target_regs()
 
             # record the current solution
             self._dst.take_screenshot(self._ret_regs, self._non_ret_regs, self._unknown_regs)
-
-            #sys.exit(0)
 
     
     def _gen_wrapper_script(self, ret_list, trace_info=None):
@@ -215,6 +229,61 @@ class Explorer(Checker):
 
         # pop the last (largest) batch
         return self._reg_batches.pop() if self._reg_batches else None
+
+    
+    def _gen_trace_info_getter(self) -> list:
+        """ Generate the Jasper commands to extract trace info when the assertion fails """
+
+        cmds = [
+            'set result [get_property_info output_equiv -list status]',
+            'if { $result != "cex" } {',
+            '   exit',
+            '}',
+            'visualize -violation -property output_equiv',
+            ''
+        ]
+    
+        for input in self._input_width_list:
+            cmds.append('visualize -get_value {} -radix 2'.format(input))
+        
+        cmds.append('visualize -get_value check_cond -radix 2')
+
+        # Print the candidate retention registers
+        cmds += [
+            '',
+            'set sc [visualize -get_value standby_cond -radix 2]',
+            'set indices [list]',
+            'for {set i 2} {$i < [llength $sc]} {incr i} {',
+            '   set prev_1 [lindex $sc [expr $i - 1]]',
+            '   set prev_2 [lindex $sc [expr $i - 2]]',
+            '   if { $prev_1 == "1\'b1" && $prev_2 == "1\'b0" } {',
+            '       lappend indices $i',
+            '   }',
+            '}',
+            '',
+            'set reglist [ get_design_info -instance design_golden -list register ]',
+            '',
+            'set candid_regs [list]',
+            'for {set i 0} {$i < [llength $indices]} {incr i} {',
+            '    set cycle [expr [lindex $indices $i] + 1]',
+            '    foreach reg $reglist {',
+            '        # remove "design_golden."',
+            '        set reg [string range $reg 14 end]',
+            '        set reg_test [string map { "." "__" "[" "__" "]" "" } $reg]',
+            '',
+            '        set golden_val [ visualize -get_value design_golden.$reg $cycle -radix 2 ]',
+            '        set test_val [ visualize -get_value design_test.$reg_test $cycle -radix 2 ]',
+            '        if { $golden_val != $test_val } {',
+            '            lappend candid_regs $reg',
+            '        }',
+            '    }',
+            '}',
+            '',
+            'puts $candid_regs',
+            ''
+        ]
+
+        return cmds
     
 
     """ Utility functions """
