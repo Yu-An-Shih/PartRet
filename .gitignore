@@ -13,6 +13,9 @@ design/spi/*
 design/mem_ctrl/*
 !design/mem_ctrl/config/
 !design/mem_ctrl/rtl/
+design/wb_dma/*
+!design/wb_dma/config/
+!design/wb_dma/rtl/
 
 # Log files
 *.log
