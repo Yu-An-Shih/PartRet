@@ -23,5 +23,5 @@
     "formal_constraints": "design/mem_ctrl/config/aip.v",
     
     "src": "design/mem_ctrl/config/source.json",
-    "dst": "design/mem_ctrl/config/solution_2.json"
+    "dst": "design/mem_ctrl/work/solution.json"
 }
