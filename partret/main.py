@@ -34,7 +34,7 @@ def main():
     #                    help='run-time check point (screenshot)')
     parser.add_argument('-o', '--out', type=str, default='checker.log',
                         help='log file')
-    parser.add_argument('-w', '--work', type=str, default='/tmp',
+    parser.add_argument('-w', '--work', type=str, default='work',
                         help='dir for temp files')
     parser.add_argument('-v', '--verbosity', type=int, default=0,
                         help='verbosity level')
