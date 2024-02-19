@@ -425,8 +425,8 @@ class Checker:
         non_power_out_equivs = [ '({} == {}_test)'.format(out, out) for out in self._non_power_outputs ]
 
         cmds += [
-            'assert -disable {.*} -regexp',
-            '',
+            #'assert -disable {.*} -regexp',
+            #'',
             '# TODO: You can modify the expression part of this assertion.',
             'assert -name output_equiv {{ @(posedge {}) disable iff ({})'.format(self._clock, self._reset),
             '    ( ' + ' &&\n    '.join(power_out_equivs) + ' ) &&',
@@ -437,21 +437,25 @@ class Checker:
         ]
 
         # TODO: configuration
-        cmds.append('set_engine_mode auto')
-        # set_engine_mode -auto 8
-        # set_proofgrid_per_engine_max_jobs 2
-
-        cmds.append('set_prove_time_limit {}s'.format(Config.DEFAULT_TIMEOUT))
-
-        cmds.append('')
+        cmds += [
+            '# TODO: You can modify the proof settings.',
+            #'set_engine_mode auto',
+            'set_engine_mode {B Ht Mp}',
+            #'set_proofgrid_per_engine_max_jobs 2',
+            #'set_prove_per_property_time_limit 0s',
+            #'set_prove_per_property_time_limit_factor 0',
+            '',
+            'set_prove_time_limit {}s'.format(Config.DEFAULT_TIMEOUT),
+            ''
+        ]
 
         # 5. Prove the properties
         # TODO: prove -save_ppd?
         #ppd = os.path.join(self._workdir, 'ret_checker.ppd')
 
         cmds += [
-            'prove -all -asserts',
-            #'prove -property { output_equiv }',
+            #'prove -all -asserts',
+            'prove -property output_equiv',
             #'prove -property {{ output_equiv }} -with_ppd {} -save_ppd {}'.format(ppd, ppd),
             ''
         ]

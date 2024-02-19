@@ -43,8 +43,8 @@ class JasperSolver:
         
         # get the proof result (proved/cex/max_trace_length)
         try:
-            summary = out_msg.split('SUMMARY')[1]
-            #summary = out_msg.split('INFO (IPF059): ')[1]   # INFO (IPF059): Completed proof on task ...
+            #summary = out_msg.split('SUMMARY')[1]
+            summary = out_msg.split('INFO (IPF059): ')[1]   # INFO (IPF059): Completed proof on task ...
         except BaseException:
             self._logger.dump('Fail getting proof sumamry')
             return out_msg
@@ -105,8 +105,8 @@ class JasperSolver:
         """ Extract signal values from the CEX trace """
 
         try:
-            summary = out_msg.split('SUMMARY')[1]
-            #summary = out_msg.split('INFO (IPF059): ')[1]   # INFO (IPF059): Completed proof on task ...
+            #summary = out_msg.split('SUMMARY')[1]
+            summary = out_msg.split('INFO (IPF059): ')[1]   # INFO (IPF059): Completed proof on task ...
         except BaseException:
             self._logger.dump('Fail getting proof sumamry')
             return out_msg
@@ -161,42 +161,6 @@ class JasperSolver:
 
         return candid_regs_str.split()
 
-    
-    """def get_retention_candidates(self) -> list:
-
-        reg_diff_vals = []
-
-        i = 0
-        while os.path.isfile(os.path.join(self._workdir, 'cex_info_{}.tcl'.format(i))):
-            cex_info_file = os.path.join(self._workdir, 'cex_info_{}.tcl'.format(i))
-            reg_vals_golden = {}
-            reg_vals_test = {}
-            
-            with open(cex_info_file, 'r') as fr:
-                for line in fr:
-                    line = line.strip()     # remove '\n' at the end
-                    reg = line.split()[0]
-                    val = line.split()[1]
-
-                    if reg.startswith('design_golden'):
-                        reg_vals_golden['.'.join(reg.split('.')[1:])] = val
-                    elif reg.startswith('design_test'):
-                        reg_vals_test['.'.join(reg.split('.')[1:])] = val
-                    else:
-                        self._logger.dump('Warning: register {} is not contained in either the golden or test design'.format(reg))
-
-            for reg_golden in reg_vals_golden:
-                reg_test = rename_to_test_sig(reg_golden)
-                if reg_test in reg_vals_test and reg_vals_golden[reg_golden] != reg_vals_test[reg_test]:
-                    reg_diff_vals.append(reg_golden)
-            
-            assert len(reg_diff_vals) > 0
-            
-            os.remove(cex_info_file)
-            i += 1
-        
-        return list(set(reg_diff_vals))
-    """
     
     @staticmethod
     def is_proven(results: dict) -> bool:
