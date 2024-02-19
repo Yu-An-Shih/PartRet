@@ -12,7 +12,6 @@
         "mc_data_pad_i": "{28'hzzz_zzzz, 2'b11, 2'b10}",
         "mc_ack_pad_i": "1'b0"
     },
-    "clock_reset_info": "design/mem_ctrl/config/clock_reset_info.tcl",
     
     "power_interface_outputs": [
         "suspended_o"

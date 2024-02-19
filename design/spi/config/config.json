@@ -8,7 +8,6 @@
         "wb_stb_i": "1'b0",
         "wb_cyc_i": "1'b0"
     },
-    "clock_reset_info": "design/spi/config/clock_reset_info.tcl",
 
     "power_interface_outputs": [
         "qacceptn",
