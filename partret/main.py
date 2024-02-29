@@ -38,6 +38,10 @@ def main():
                         help='dir for temp files')
     parser.add_argument('-v', '--verbosity', type=int, default=0,
                         help='verbosity level')
+    
+    # TODO
+    parser.add_argument('--opt', action='store_true',
+                        help='run Yosys optimization pass on the partial retention circuit')
 
     args = parser.parse_args()
 

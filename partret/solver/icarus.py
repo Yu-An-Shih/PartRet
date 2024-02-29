@@ -16,7 +16,7 @@ class IcarusSolver:
         self._logger = logger
         self._workdir = workdir
 
-        self._wrapper = os.path.join(self._workdir, 'wrapper.v')
+        self._wrapper = os.path.join(self._workdir, 'wrapper_sim.sv')
         self._design_test = os.path.join(self._workdir, 'design_test.v')
 
         self._include_dirs = []

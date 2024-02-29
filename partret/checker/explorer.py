@@ -11,11 +11,12 @@ from partret.checker.checker import Checker
 from partret.config import Config
 from partret.solver.icarus import IcarusSolver
 from partret.solver.jasper import JasperSolver
-from partret.util.generic import rename_to_test_sig
+from partret.solver.yosys import YosysSolver
+#from partret.util.generic import rename_to_test_sig
 from partret.util.image import Image
 
 class Explorer(Checker):
-    """ TODO """
+    """ Automatic tool to determine the optimal retention register list """
 
     def __init__(self, config, logger, workdir, verbosity=0):
         """ constructor """
@@ -37,12 +38,52 @@ class Explorer(Checker):
     
 
     def minimize_retention_list(self):
-        """ minimize the number of retention registers from a complete retention list """
-        
-        self._unknown_regs |= set(self._ret_regs)
-        self._ret_regs = set()
+        """ Analyze the registers in self._unknown_regs and put them into self._ret_regs/self._non_ret_regs """
+        ### Recommened use case: minimize the number of retention registers from a complete retention list ###
 
-        self._solve()
+        # create proof script for Jasper
+        with open(self._retention_checker, 'r') as fr:
+            ret_checker = [ line.strip('\n') for line in fr.readlines() ]
+        
+        ret_checker += ['exit']
+        
+        target_regs = self._get_target_regs()
+        while target_regs:
+            # record current progress
+            self._report_current_progress()
+            self._logger.dump('Check registers:')
+            self._logger.dump('\n'.join(target_regs))
+
+            #r_toret = self._ret_regs | (self._unknown_regs - target_regs)
+            r_noret = self._non_ret_regs | target_regs
+
+            # generate partial retention design
+            self._gen_partret_design(r_noret)
+
+            # launch Jasper
+            out_msg = self._solver._exec_jg(ret_checker)
+            #self._logger.dump(out_msg)
+
+            # parse Jasper output
+            res = self._solver._parse_jg_result(out_msg)
+            self._logger.dump(res)
+
+            if JasperSolver.is_proven(res):
+                self._non_ret_regs |= target_regs
+            elif JasperSolver.is_cex(res):
+                if len(target_regs) == 1:
+                    self._ret_regs |= target_regs
+            else:
+                self._logger.dump('Error: Failed to prove property within {}s.'.format(Config.DEFAULT_TIMEOUT))
+                self._logger.dump('The registers in the retention list are sufficient but may not be necessary.')
+                self._logger.dump('Exitting...')
+                sys.exit(0)
+            
+            self._unknown_regs -= (self._ret_regs | self._non_ret_regs)
+            target_regs = self._get_target_regs()
+
+            # record the current solution
+            self._dst.take_screenshot(self._ret_regs, self._non_ret_regs, self._unknown_regs)
 
         assert not self._unknown_regs
         assert self._regs == (self._ret_regs | self._non_ret_regs)
@@ -67,14 +108,13 @@ class Explorer(Checker):
             # record current progress
             self._report_current_progress()
 
-            # generate formal testbench
-            # TODO: modify this
-            self._gen_wrapper_script(self._ret_regs)
+            # generate partial retention design
+            self._gen_partret_design(self._non_ret_regs | self._unknown_regs)
 
             # Debug
             #import subprocess
-            #subprocess.run(['cp', os.path.join(self._workdir, 'wrapper.v'), os.path.join(self._workdir, 'wrapper_formal.sv')], stdout=subprocess.PIPE)
-
+            #subprocess.run(['cp', os.path.join(self._workdir, 'design_test.v'), os.path.join(self._workdir, 'design_test_formal.v')])
+            
             # launch Jasper
             out_msg = self._solver._exec_jg(ret_checker)
 
@@ -93,23 +133,32 @@ class Explorer(Checker):
                 self._unknown_regs = set()
             elif JasperSolver.is_cex(res):
                 # extract cex trace info
-                input_vals = self._solver.extract_cex_trace_info(out_msg, list(self._input_width_list.keys()))
+                input_vals = self._solver.extract_cex_trace_info(out_msg, list(self._input_width_list.keys()) + ['pr_restore'])
                 check_cond_vals = self._solver.extract_cex_trace_info(out_msg, ['check_cond'])['check_cond']
+
+                # create simulation testbench
+                self._gen_wrapper_sim([check_cond_vals, input_vals])
 
                 #ret_candids = list(self._unknown_regs.copy())
                 ret_candids = self._solver.get_retention_candidates(out_msg)
+
+                assert set(ret_candids) & self._ret_regs == set()
+                
+                # TODO: add this line? need to deal with (human) error cases
+                #ret_candids -= self._non_ret_regs
                 
                 # Print the candidate retention registers
                 if self._verbosity > 0:
                     self._logger.dump('Retention candidates:')
                     self._logger.dump('\n'.join(ret_candids))
-
+                
                 new_ret = []
                 while len(ret_candids) > 0:
                     candid = ret_candids.pop()
 
-                    # create simulation testbench
-                    self._gen_wrapper_script(self._ret_regs | set(new_ret + ret_candids), [check_cond_vals, input_vals])
+                    # generate partial retention design
+                    # TODO: for simulation, create a large power-collapsible design instead?
+                    self._gen_partret_design(self._non_ret_regs | (self._unknown_regs - set(new_ret + ret_candids)))
 
                     # simulate
                     sim_msg = self._iv_solver.exec(self._get_design_files())
@@ -123,6 +172,7 @@ class Explorer(Checker):
                         new_ret.append(candid)
 
                 assert len(new_ret) > 0
+                assert set(new_ret).issubset(self._unknown_regs)
                 
                 self._logger.dump('Registers added to retention list:')
                 self._logger.dump('\n'.join(new_ret))
@@ -143,63 +193,171 @@ class Explorer(Checker):
         assert self._regs == (self._ret_regs | self._non_ret_regs)
 
     
-    def _solve(self):
-        """ Analyze the registers in self._unknown_regs and put them into self._ret_regs/self._non_ret_regs """
+    def _gen_wrapper_sim(self, trace_info):
+        """ Wrap up the original and power-collapsible designs (for simulation) """
         
-        # create proof script for Jasper
-        with open(self._retention_checker, 'r') as fr:
-            ret_checker = [ line.strip('\n') for line in fr.readlines() ]
+        # Target content
+        # - wrapper_sim.sv
+        wrapper = os.path.join(self._workdir, 'wrapper_sim.sv')
+
+        sig_declare_list = []
+
+        assignment_list = []
+
+        golden_port_list = []
+        test_port_list = []
+
+        # clock and reset
+        sig_declare_list += [
+            'reg {} = 1;'.format(self._clock),
+            'reg {} = 0;'.format(self._reset)
+        ]
         
-        ret_checker += ['exit']
-        
-        target_regs = self._get_target_regs()
-        while target_regs:
-            # record current progress
-            self._report_current_progress()
-            self._logger.dump('Check registers:')
-            self._logger.dump('\n'.join(target_regs))
+        golden_port_list += [
+            '    .{}({}),'.format(self._clock, self._clock),
+            '    .{}({}),'.format(self._reset, self._reset)
+        ]
+        test_port_list += [
+            '    .{}({}),'.format(self._clock, self._clock),
+            '    .{}({}),'.format(self._reset, self._reset)
+        ]
 
-            r_toret = self._ret_regs | (self._unknown_regs - target_regs)
-
-            # generate proof scripts
-            # TODO: modify this
-            self._gen_wrapper_script(r_toret)
-
-            # launch Jasper
-            out_msg = self._solver._exec_jg(ret_checker)
-            #self._logger.dump(out_msg)
-
-            # parse Jasper output
-            res = self._solver._parse_jg_result(out_msg)
-            self._logger.dump(res)
-
-            if JasperSolver.is_proven(res):
-                self._non_ret_regs |= target_regs
-            elif JasperSolver.is_cex(res):
-                if len(target_regs) == 1:
-                    self._ret_regs |= target_regs
-            else:
-                self._logger.dump('Error: Failed to prove property within {}s.'.format(Config.DEFAULT_TIMEOUT))
-                self._logger.dump('The registers in the retention list are sufficient but may not necessary.')
-                self._logger.dump('Exitting...')
-                sys.exit(0)
+        for clk in self._secondary_clocks:
+            sig_declare_list.append('reg {} = 0;'.format(clk))
             
-            self._unknown_regs -= (self._ret_regs | self._non_ret_regs)
-            target_regs = self._get_target_regs()
-
-            # record the current solution
-            self._dst.take_screenshot(self._ret_regs, self._non_ret_regs, self._unknown_regs)
-
-    
-    def _gen_wrapper_script(self, ret_list, trace_info=None):
-        """ Profile wrapper.v with a specific retention list """
-
-        wrapper = os.path.join(self._workdir, 'wrapper.v')
+            golden_port_list.append('    .{}({}),'.format(clk, clk))
+            test_port_list.append('    .{}({}),'.format(clk, clk))
         
-        wrapper_lines = self._gen_wrapper(ret_list, trace_info)
+        # input ports
+        for input, width in self._input_width_list.items():
+            if input in self._reset_input_vals:
+                sig_declare_list.append('reg [{}:0] {} = {};'.format(width - 1, input, self._reset_input_vals[input]))
+            else:
+                sig_declare_list.append('reg [{}:0] {};'.format(width - 1, input))
+            
+            golden_port_list.append('    .{}({}),'.format(input, input))
+            test_port_list.append('    .{}({}),'.format(input, input))
+        
+        # output ports
+        for output, width in self._output_width_list.items():
+            sig_declare_list.append('wire [{}:0] {}, {}_test;'.format(width - 1, output, output))
+            golden_port_list.append('    .{}({}),'.format(output, output))
+            test_port_list  .append('    .{}({}_test),'.format(output, output))
+
+        # Remove the last comma in the port lists
+        golden_port_list[-1] = golden_port_list[-1][:-1]
+        #test_port_list[-1] = test_port_list[-1][:-1]
+        
+        # pr_restore
+        sig_declare_list.append('reg pr_restore = 0;')
+        test_port_list.append('    .pr_restore(pr_restore)')
+
+        # module instantiation
+        # TODO: automatically determine top module?
+        golden_inst = ['{} design_golden ('.format(self._top_module)] + golden_port_list + [');']
+        test_inst = ['{}_test design_test ('.format(self._top_module)] + test_port_list + [');']
+
+        lines = []
+        
+        lines += ['module wrapper;', '']
+        lines += sig_declare_list + ['']
+        lines += assignment_list + ['']
+        lines += golden_inst +  [''] + test_inst + ['']
+
+        lines += ['// Simulation testbench', ''] + self._gen_testbench(trace_info) + ['']
+
+        lines += ['endmodule']
 
         with open(wrapper, 'w') as fw:
-            print('\n'.join(wrapper_lines), file=fw)
+            print('\n'.join(lines), file=fw)
+
+    
+    def _gen_testbench(self, trace_info: list) -> list:
+        """ Create simulation testbench based on the counterexample trace """
+
+        check_cond_vals = trace_info[0]
+        input_vals = trace_info[1]
+
+        # Debug
+        #self._logger.dump('check_cond_vals: {}'.format(check_cond_vals))
+        #self._logger.dump('input_vals: {}'.format(input_vals))
+        
+        clk_progress = [ 'always #5 {} = ~{};'.format(self._clock, self._clock) ]
+
+        max_factor = 1
+        for clk, factor in self._secondary_clocks.items():
+            clk_progress += [ 'always #{} {} = ~{};'.format(5 * factor, clk, clk) ]
+            max_factor = max(max_factor, factor)
+        
+        clk_progress += [ '' ]
+
+        # initialize non-resettable registers
+        init = [ '// Initialize all non-resettable registers to 0' ]
+        for reg in self._non_resettable_regs:
+            reg_renamed = YosysSolver.rename_to_test_sig(reg)
+            init += [
+                'design_golden.{} = 0;'.format(reg),
+                'design_test.{} = 0;'.format(reg_renamed)
+            ]
+        init += [ '' ]
+
+        cycles = [
+            '// Reset',
+            '#1;',
+            '{} = 1\'b1;'.format(self._reset),
+            'repeat ({}) @(posedge {});'.format(10 * max_factor, self._clock),  # TODO: config reset cycles
+            #'#1;',
+            #'{} = 1\'b0;'.format(self._reset),
+            ''
+        ]
+
+        out_diff = ' | '.join(['({} != {}_test)'.format(out, out) for out in self._output_width_list.keys()])
+        pow_out_diff = ' | '.join(['({} != {}_test)'.format(out, out) for out in self._power_outputs])
+        
+        trace_len = len(check_cond_vals)
+        for i in range(trace_len):
+            cycle = [
+                '// Cycle {}'.format(i+1),
+                '#1;'
+            ]
+
+            if i == 0:
+                cycle += [
+                    '',
+                    '// End reset',
+                    '{} = 1\'b0;'.format(self._reset),
+                    ''
+                ]
+                cycle += init
+            
+            for input in input_vals:
+                cycle.append('{} = {};'.format(input, input_vals[input][i]))
+            
+            cycle += [
+                '',
+                '@(negedge {});'.format(self._clock),
+                #'$display("cycle {}");'.format(i+1),
+                'if ({}) begin'.format( pow_out_diff if (check_cond_vals[i] == '1\'b0') else out_diff ),
+                '    $display("cex");',
+                #'    $display("cex{}");'.format(i+1),
+                '    $finish;',
+                'end',
+                '',
+                '@(posedge {});'.format(self._clock),
+                ''
+            ]
+            
+            cycles += cycle
+        
+        cycles += [
+            '// Done',
+            '$display("proven");',
+            '$finish;'
+        ]
+
+        trace = ['initial begin'] + ['    {}'.format(line) for line in cycles] + ['end']
+
+        return clk_progress + trace
     
     
     def _get_target_regs(self):
@@ -245,20 +403,20 @@ class Explorer(Checker):
     
         for input in self._input_width_list:
             cmds.append('visualize -get_value {} -radix 2'.format(input))
-        
+        cmds.append('visualize -get_value pr_restore -radix 2')
+
         cmds.append('visualize -get_value check_cond -radix 2')
 
         # Print the candidate retention registers
         cmds += [
             '',
-            'set sc [visualize -get_value standby_cond -radix 2]',
+            'set restore [visualize -get_value pr_restore -radix 2]',
             'set indices [list]',
-            'for {set i 2} {$i < [llength $sc]} {incr i} {',
-            '   set prev_1 [lindex $sc [expr $i - 1]]',
-            '   set prev_2 [lindex $sc [expr $i - 2]]',
-            '   if { $prev_1 == "1\'b1" && $prev_2 == "1\'b0" } {',
-            '       lappend indices $i',
-            '   }',
+            'for {set i 1} {$i < [llength $restore]} {incr i} {',
+            '    set prev [lindex $restore [expr $i - 1]]',
+            '    if { $prev == "1\'b1" } {',
+            '        lappend indices $i',
+            '    }',
             '}',
             '',
             'set reglist [ get_design_info -instance design_golden -list register ]',
@@ -269,7 +427,11 @@ class Explorer(Checker):
             '    foreach reg $reglist {',
             '        # remove "design_golden."',
             '        set reg [string range $reg 14 end]',
-            '        set reg_test [string map { "." "__" "[" "__" "]" "" } $reg]',
+            '        if { [string first "." $reg] != -1 } {',
+            '            set reg_test "\\\\${reg}"',
+            '        } else {',
+            '            set reg_test $reg',
+            '        }',
             '',
             '        set golden_val [ visualize -get_value design_golden.$reg $cycle -radix 2 ]',
             '        set test_val [ visualize -get_value design_test.$reg_test $cycle -radix 2 ]',

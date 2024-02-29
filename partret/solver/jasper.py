@@ -30,7 +30,7 @@ class JasperSolver:
             with tempfile.TemporaryDirectory(dir=self._workdir) as proj_dir:
                 try:
                     res = subprocess.run(['jg', '-no_gui', '-tcl', cmd_file.name, '-proj', proj_dir], stdout=subprocess.PIPE)
-                except BaseException:
+                except BaseException:   # This is triggered when the user presses Ctrl+C
                     self._logger.dump('Error during solving:')
                     self._logger.dump('\n'.join(cmds))
                     sys.exit(0)

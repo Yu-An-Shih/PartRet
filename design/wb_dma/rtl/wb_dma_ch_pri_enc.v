@@ -371,7 +371,7 @@ always @(posedge clk)
 
 // Select configured priority
 always @(pri_sel or pri_out0 or pri_out1 or  pri_out2)
-	case(pri_sel)		// synopsys parallel_case full_case
+	case(pri_sel)
 	   2'd0: pri_out = pri_out0;
 	   2'd1: pri_out = pri_out1;
 	   2'd2: pri_out = pri_out2;

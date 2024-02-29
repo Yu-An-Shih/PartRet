@@ -95,7 +95,7 @@ assign pri_out = ch_conf[0] ? pri_out_d : 8'h0;
 
 // Select Configured Priority
 always @(pri_sel or pri_out_d0 or pri_out_d1 or  pri_out_d2)
-	case(pri_sel)		// synopsys parallel_case full_case
+	case(pri_sel)
 	   2'd0: pri_out_d = pri_out_d0;
 	   2'd1: pri_out_d = pri_out_d1;
 	   2'd2: pri_out_d = pri_out_d2;

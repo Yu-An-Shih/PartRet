@@ -102,3 +102,10 @@ assert property (@(posedge clk_i) ($rose(qdeny) |-> $past(!qreqn && qacceptn)));
 
 // Optional Q-channel assumption
 //assume property (@(posedge clk_i) ($fell(qreqn) |-> ##[1:$] $rose(qreqn)));
+
+// Constraints for retention registers
+wire standby_state = !qreqn && !qacceptn;
+
+assume property (@(posedge clk_i) ($rose(pr_restore) |-> $past(standby_state)));
+assume property (@(posedge clk_i) ($rose(pr_restore) |=> $rose(qreqn) && $fell(pr_restore)));
+assume property (@(posedge clk_i) (standby_state && !pr_restore |=> !qreqn));

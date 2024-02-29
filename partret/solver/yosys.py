@@ -23,12 +23,24 @@ class YosysSolver:
 
             with open(cmd_file.name, 'w') as fw:
                 print('\n'.join(cmds), file=fw)
-
+            
             try:
-                res = subprocess.run(['yosys', '-m', 'partret/util/yosys/make_power_collapsible.so', cmd_file.name], stdout=subprocess.PIPE)
-            except BaseException:
-                self._logger.dump('Error during solving:')
-                self._logger.dump('\n'.join(cmds))
+                res = subprocess.run(['yosys', '-m', 'partret/util/yosys/gen_part_ret.so', cmd_file.name], check=True, text=True, capture_output=True)
+            except subprocess.CalledProcessError as e:
+                self._logger.dump('Command "{}" failed:'.format(' '.join(e.cmd)))
+                self._logger.dump(e.stderr)
                 sys.exit(0)
 
-        return res.stdout.decode('utf-8')
+        return res.stdout
+    
+    @staticmethod
+    def rename_to_test_sig(golden_sig: str) -> str:
+        
+        #return golden_sig.replace('.', '__').replace('[', '__').replace(']', '')
+        
+        if '.' in golden_sig:
+            test_sig = '\\' + golden_sig.replace('[', ' [')
+        else:
+            test_sig = golden_sig
+        
+        return test_sig

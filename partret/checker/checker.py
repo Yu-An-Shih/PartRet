@@ -5,10 +5,11 @@
 import json
 import os
 import sys
+import tempfile
 
 from partret.config import Config
 from partret.solver.jasper import JasperSolver
-from partret.util.generic import rename_to_test_sig
+from partret.solver.yosys import YosysSolver
 #from partret.util.image import Image
 
 
@@ -17,6 +18,10 @@ class Checker:
 
     def __init__(self, config, logger, workdir, verbosity=0):
         """ constructor """
+
+        self._tmpdir = os.path.join(workdir, 'tmp') # stores temporary files for debug purpose
+        if not os.path.exists(self._tmpdir):
+            os.makedirs(self._tmpdir)
         
         self._logger = logger
         self._workdir = workdir
@@ -30,8 +35,10 @@ class Checker:
         self._top_module = ""
         self._reset_input_vals = {}
 
-        self._standby_cond = ""
+        #self._standby_cond = "" # TODO: get rid of this
         self._check_cond = ""
+
+        # TODO: restore condition
 
         self._input_width_list = {}
         self._output_width_list = {}
@@ -39,12 +46,17 @@ class Checker:
         self._power_outputs = []
         self._non_power_outputs = []
 
+        self._regs_and_resets = {}
+
         self._regs = set()
         self._ret_regs = set()
         self._non_ret_regs = set()
         self._unknown_regs = set()
+
+        self._non_resettable_regs = []
         
         self._solver = JasperSolver(logger, workdir)
+        self._ys_solver = YosysSolver(logger, workdir)
         
         self._setup(config)
 
@@ -83,9 +95,9 @@ class Checker:
             assert isinstance(config['reset_input_values'], dict)
             self._reset_input_vals = config['reset_input_values']
         
-        # standby condition
-        assert isinstance(config['standby_condition'], str)
-        self._standby_cond = config['standby_condition']
+        # standby condition # TODO: get rid of this
+        #assert isinstance(config['standby_condition'], str)
+        #self._standby_cond = config['standby_condition']
         
         # check condition
         assert isinstance(config['check_condition'], str)
@@ -93,9 +105,9 @@ class Checker:
 
         # formal constraints
         # TODO: get rid of this
-        assert os.path.isfile(config['formal_constraints'])
-        with open(config['formal_constraints'], 'r') as fr:
-            self._formal_constraints = fr.read().splitlines()
+        #assert os.path.isfile(config['formal_constraints'])
+        #with open(config['formal_constraints'], 'r') as fr:
+        #    self._formal_constraints = fr.read().splitlines()
 
         # design information
         design_info = os.path.join(self._workdir, 'design_info.json')
@@ -115,7 +127,8 @@ class Checker:
         self._non_power_outputs = list(set(design_info['output_list'].keys()) - set(self._power_outputs))
 
         # self._regs, self._ret_regs, self._non_ret_regs
-        self._regs = set(design_info['register_list'].keys())
+        self._regs_and_resets = design_info['reset_values']
+        self._regs = set(self._regs_and_resets.keys())
 
         assert os.path.isfile(config['src'])
         with open(config['src'], 'r') as f:
@@ -134,6 +147,10 @@ class Checker:
         self._unknown_regs = get_regs(src['unknown'])
 
         self._check_reg_subsets()
+
+        # non-resettable registers
+        if 'non_resettable_regs' in config:
+            self._non_resettable_regs = config['non_resettable_regs']
 
     
     def _get_design_files(self, design_files=[]) -> list:
@@ -158,320 +175,71 @@ class Checker:
         return self._design_files
 
     
-    def _gen_wrapper(self, ret_list=None, trace_info=None):
-        """ Wrap up the original and power-collapsible designs """
-
-        IsSimulation = trace_info is not None
-        
-        sig_declare_list = []
-
-        assignment_list = []
-
-        golden_port_list = []
-        test_port_list = []
-        
-        # clock and reset
-        if IsSimulation:
-            sig_declare_list += [
-                #'reg {} = 0;'.format(self._clock),
-                'reg {} = 1;'.format(self._clock),
-                'reg {} = 0;'.format(self._reset)
-            ]
-        else:
-            sig_declare_list += [
-                'wire {};'.format(self._clock),
-                'wire {};'.format(self._reset)
-            ]
-        
-        golden_port_list += [
-            '    .{}({}),'.format(self._clock, self._clock),
-            '    .{}({}),'.format(self._reset, self._reset)
-        ]
-        test_port_list += [
-            '    .{}({}),'.format(self._clock, self._clock),
-            '    .{}({}),'.format(self._reset, self._reset)
-        ]
-
-        for clk in self._secondary_clocks:
-            if IsSimulation:
-                sig_declare_list.append('reg {} = 0;'.format(clk))
-            else:
-                sig_declare_list.append('wire {};'.format(clk))
-            
-            golden_port_list.append('    .{}({}),'.format(clk, clk))
-            test_port_list.append('    .{}({}),'.format(clk, clk))
-        
-        # input ports
-        for input, width in self._input_width_list.items():
-            #if input == self._clock or input == self._reset or input in self._secondary_clocks:
-            #    continue
-            
-            if IsSimulation:
-                if input in self._reset_input_vals:
-                    sig_declare_list.append('reg [{}:0] {} = {};'.format(width - 1, input, self._reset_input_vals[input]))
-                else:
-                    sig_declare_list.append('reg [{}:0] {};'.format(width - 1, input))
-            else:
-                sig_declare_list.append('wire [{}:0] {};'.format(width - 1, input))
-            
-            golden_port_list.append('    .{}({}),'.format(input, input))
-            test_port_list.append('    .{}({}),'.format(input, input))
-        
-        # output ports
-        for output, width in self._output_width_list.items():
-            sig_declare_list.append('wire [{}:0] {}, {}_test;'.format(width - 1, output, output))
-            golden_port_list.append('    .{}({}),'.format(output, output))
-            test_port_list  .append('    .{}({}_test),'.format(output, output))
-        
-        # partial retention
-        for reg in self._regs:
-            reg_renamed = rename_to_test_sig(reg)
-            
-            sig_declare_list.append('wire {}_ret;'.format(reg_renamed))
-            test_port_list.append('    .{}_ret({}_ret),'.format(reg_renamed, reg_renamed))
-            
-            if ret_list is not None:
-                if reg in ret_list:
-                    assignment_list.append('assign {}_ret = 1\'b1;'.format(reg_renamed))
-                else:
-                    assignment_list.append('assign {}_ret = 1\'b0;'.format(reg_renamed))
-        
-        # standby condition
-        sig_declare_list.append('wire standby_cond;')
-        test_port_list.append('    .standby_cond(standby_cond),')
-        assignment_list.append('assign standby_cond = {};'.format(self._standby_cond))
-
-        # check condition
-        sig_declare_list.append('wire check_cond;')
-        assignment_list.append('assign check_cond = {};'.format(self._check_cond))
-
-        # Remove the last comma in the port lists
-        golden_port_list[-1] = golden_port_list[-1][:-1]
-        test_port_list[-1] = test_port_list[-1][:-1]
-
-        # module instantiation
-        # TODO: automatically determine top module?
-        golden_inst = ['{} design_golden ('.format(self._top_module)] + golden_port_list + [');']
-        test_inst = ['{}_test design_test ('.format(self._top_module)] + test_port_list + [');']
-
-        cmds = ['module wrapper;', '']
-        cmds += sig_declare_list + ['']
-        cmds += assignment_list + ['']
-        cmds += golden_inst +  [''] + test_inst + ['']
-
-        if IsSimulation:
-            cmds += ['// Simulation testbench', ''] + self._gen_testbench(trace_info) + ['']
-            pass
-        else:
-            # TODO: get rid of this
-            cmds += ['// Formal constraints', ''] + self._formal_constraints + ['']
-        
-        cmds += ['endmodule']
-
-        return cmds
-    
-
-    def _gen_testbench(self, trace_info: list) -> list:
-        """ TODO """
-
-        check_cond_vals = trace_info[0]
-        input_vals = trace_info[1]
-
-        # Debug
-        #self._logger.dump('check_cond_vals: {}'.format(check_cond_vals))
-        #self._logger.dump('input_vals: {}'.format(input_vals))
-        
-        clk_progress = [ 'always #5 {} = ~{};'.format(self._clock, self._clock) ]
-
-        max_factor = 1
-        for clk, factor in self._secondary_clocks.items():
-            clk_progress += [ 'always #{} {} = ~{};'.format(5 * factor, clk, clk) ]
-            max_factor = max(max_factor, factor)
-        
-        clk_progress += [ '' ]
-        
-        # clk_progress = [
-        #     'always begin',
-        #     '    #5 {} = ~{};'.format(self._clock, self._clock),
-        #     'end',
-        #     ''
-        # ]
-
-        # TODO: only initialize non-resettable registers
-        init = [ '// Initialize all registers to 0', '#1;' ]
-        for reg in self._regs:
-            reg_renamed = rename_to_test_sig(reg)
-            init += [
-                'design_golden.{} = 0;'.format(reg),
-                'design_test.{} = 0;'.format(reg_renamed)
-            ]
-        init += [ '' ]
-
-        reset = [
-            '// Reset',
-            #'#1;',
-            '{} = 1\'b1;'.format(self._reset),
-            'repeat ({}) @(posedge {});'.format(10 * max_factor, self._clock),  # TODO: config reset cycles
-            #'#1;',
-            #'{} = 1\'b0;'.format(self._reset),
-            ''
-        ]
-
-        cycles = []
-        out_diff = ' | '.join(['({} != {}_test)'.format(out, out) for out in self._output_width_list.keys()])
-        pow_out_diff = ' | '.join(['({} != {}_test)'.format(out, out) for out in self._power_outputs])
-        
-        trace_len = len(check_cond_vals)
-        for i in range(trace_len):
-            cycle = [
-                '// Cycle {}'.format(i+1),
-                '#1;'
-            ]
-
-            if i == 0:
-                cycle.append('{} = 1\'b0;'.format(self._reset))
-            
-            for input in input_vals:
-                cycle.append('{} = {};'.format(input, input_vals[input][i]))
-            
-            cycle += [
-                '',
-                '@(negedge {});'.format(self._clock),
-                #'$display("cycle {}");'.format(i+1),
-                'if ({}) begin'.format( pow_out_diff if (check_cond_vals[i] == '1\'b0') else out_diff ),
-                '    $display("cex");',
-                #'    $display("cex{}");'.format(i+1),
-                '    $finish;',
-                'end',
-                '',
-                '@(posedge {});'.format(self._clock),
-                ''
-            ]
-            
-            cycles += cycle
-        
-        cycles += [
-            '// Done',
-            '$display("proven");',
-            '$finish;'
-        ]
-
-        trace = ['initial begin'] + ['    {}'.format(line) for line in init + reset + cycles] + ['end']
-
-        return clk_progress + trace
-
-    
-    def _gen_ret_checker(self, ret_list=None):
-        """ Generate a proof script (ret_checker.tcl) for the target retention list """
+    def _gen_partret_design(self, non_ret_list):
+        ### Generate a partial retention design (requires Yosys) ###
 
         # Require
-        # - design files
-        # - clock and reset information
-        # - power interface outputs
-        # - check condition
-        
-        cmds = [
-            '# This is the Jasper script for the self composition check.',
-            '# This script would be used by the retention explorer tool, ',
-            '# so please only modify it as instructed (marked with "# TODO: ...") if you want to call the explorer.',
-            ''
-        ]
+        # - RTL files
+        # - top module
 
-        # 1. Set up the design
+        # Temporary files
+        # - get reset values list for non-retention registers
+        reset_values_part = os.path.join(self._workdir, 'reset_values_part.txt')
+
+        # Target content
+        # - design_test.v: power-collapsible design
+        design_test = os.path.join(self._workdir, 'design_test.v')
+
+        # 1. Create a reset value list for non-retention registers
+        with open(reset_values_part, 'w') as fw:
+            for reg in non_ret_list:
+                fw.write('{}\n{}\n'.format(reg, self._regs_and_resets[reg]))
+
+        # 2. Call the Yosys passes to generate the partial retention circuit
+        cmds = []
+
+        # read Verilog files
         design_files = self._get_design_files()
         for file in design_files:
-            cmds.append('analyze -sv {}'.format(file))
+            cmds.append('read_verilog {}'.format(file))   # TODO: mem2reg?
         
-        cmds += [
-            'analyze -sv {}'.format(os.path.join(self._workdir, 'design_test.v')),
-            'analyze -sv {}'.format(os.path.join(self._workdir, 'wrapper.v')),
-            '',
-            'elaborate -top wrapper',
-            ''
-        ]
-
-        # 2. Source clock and reset information
-        cmds.append('clock {}'.format(self._clock))
-
-        for clk, factor in self._secondary_clocks.items():
-            cmds.append('clock {} -factor {}'.format(clk, factor))
+        if self._top_module:
+            cmds.append('hierarchy -check -top {}'.format(self._top_module))
+        else:
+            cmds.append('hierarchy -check -auto-top')
         
-        cmds.append('reset {} -non_resettable_regs 0'.format(self._reset))
-
+        # generate power-collapsible design
         cmds += [
-            '',
-            '# TODO: You can configure the changing rate of inputs.',
-            ''
+            'proc',
+            'flatten',
+            #'opt_clean',    # TODO: modify the original design instead?
+
+            'rename -top {}_test'.format(self._top_module),
+
+            #'make_power_collapsible -reset_vals {}'.format(reset_values),
+            'gen_part_ret -reset_vals {}'.format(reset_values_part),
+
+            'write_verilog -nodec -noattr -noparallelcase {}'.format(design_test)
         ]
 
-        # Assumptions during reset
-        for input, val in self._reset_input_vals.items():
-            cmds.append('assume -reset {{ {} == {} }}'.format(input, val))
-        cmds.append('')
+        if self._verbosity > 0:
+            # dump Yosys script
+            with open(os.path.join(self._tmpdir, 'gen_design_test.ys'), 'w') as fw:
+                print('\n'.join(cmds), file=fw)
+        
+        # lauch Yosys
+        self._ys_solver._exec_yosys(cmds)
 
-        # 3. Assumptions
-        # TODO: get rid of this
-        if ret_list is not None:
-            for reg in self._regs:
-                reg_renamed = rename_to_test_sig(reg)
-                if reg in ret_list:
-                    cmds += [ 'assume -env {{ {}_ret == 1\'b1 }}'.format(reg_renamed) ]
-                else:
-                    cmds += [ 'assume -env {{ {}_ret == 1\'b0 }}'.format(reg_renamed) ]
-            cmds += ['']
+        os.remove(reset_values_part)
 
-        # 4. Assertions
-        power_out_equivs = [ '({} == {}_test)'.format(out, out) for out in self._power_outputs ]
-        non_power_out_equivs = [ '({} == {}_test)'.format(out, out) for out in self._non_power_outputs ]
-
-        cmds += [
-            #'assert -disable {.*} -regexp',
-            #'',
-            '# TODO: You can modify the expression part of this assertion.',
-            'assert -name output_equiv {{ @(posedge {}) disable iff ({})'.format(self._clock, self._reset),
-            '    ( ' + ' &&\n    '.join(power_out_equivs) + ' ) &&',
-            '    ( !({}) ||'.format(self._check_cond),
-            '    ( ' + ' &&\n    '.join(non_power_out_equivs) + ' ) )',
-            '}',
-            ''
-        ]
-
-        # TODO: configuration
-        cmds += [
-            '# TODO: You can modify the proof settings.',
-            #'set_engine_mode auto',
-            'set_engine_mode {B Ht Mp}',
-            #'set_proofgrid_per_engine_max_jobs 2',
-            #'set_prove_per_property_time_limit 0s',
-            #'set_prove_per_property_time_limit_factor 0',
-            '',
-            'set_prove_time_limit {}s'.format(Config.DEFAULT_TIMEOUT),
-            ''
-        ]
-
-        # 5. Prove the properties
-        # TODO: prove -save_ppd?
-        #ppd = os.path.join(self._workdir, 'ret_checker.ppd')
-
-        cmds += [
-            #'prove -all -asserts',
-            'prove -property output_equiv',
-            #'prove -property {{ output_equiv }} -with_ppd {} -save_ppd {}'.format(ppd, ppd),
-            ''
-        ]
-
-        # 6. Report the results
-        cmds += [
-            'get_property_info output_equiv -list status',
-            'get_property_info output_equiv -list time',
-            'get_property_info output_equiv -list engine',
-            'get_property_info output_equiv -list trace_length',
-            'get_property_info output_equiv -list proof_effort',
-            'get_property_info output_equiv -list min_length',
-            ''
-        ]
-
-        return cmds
+        # 3. Format the generated design_test.v
+        # TODO: replace ' [*];' with '[*];'?
+        #temp_fd, temp_path = tempfile.mkstemp(dir=self._workdir)
+        #with os.fdopen(temp_fd, 'w') as temp_file, open(design_test, 'r') as infile:
+        #    for line in infile:
+        #        modified_line = line.replace('\\', '').replace(' ;', ';')
+        #        temp_file.write(modified_line)
+        #os.replace(temp_path, design_test)    
     
     
     def _get_design_info(self):
