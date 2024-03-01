@@ -42,9 +42,10 @@ output  qdeny;
 // wire Q_STOPPED = !qreqn && !qacceptn;
 // wire Q_EXIT = qreqn && !qacceptn;
 
-localparam ST_STOP = 2'b00;
-localparam ST_RUN  = 2'b01;
-localparam ST_PRE  = 2'b10;
+localparam ST_STOP  = 2'b00;
+localparam ST_RUN   = 2'b01;
+localparam ST_PRE   = 2'b10;
+localparam ST_PRE_2 = 2'b11;
 
 reg [1:0] state, state_next;
 
@@ -54,8 +55,7 @@ assign qdeny = 1'b0;
 wire [4:0] wb_adr_int = (state == ST_RUN) ? wb_adr_i : 5'b0;
 wire [31:0] wb_dat_int = (state == ST_RUN) ? wb_dat_i : 32'b0;
 wire [3:0] wb_sel_int = (state == ST_RUN) ? wb_sel_i : 4'b0;
-// TODO: uncomment this line
-//wire wb_we_int = (state == ST_RUN) ? wb_we_i : 1'b0;
+wire wb_we_int = (state == ST_RUN) ? wb_we_i : 1'b0;
 wire wb_stb_int = (state == ST_RUN) ? wb_stb_i : 1'b0;
 wire wb_cyc_int = (state == ST_RUN) ? wb_cyc_i : 1'b0;
 //wire miso_pad_int = (state == ST_RUN) ? miso_pad_i : 1'b0;
@@ -102,11 +102,13 @@ always @(*) begin
             end
         end
         ST_PRE: begin
-            // TODO: control by spi_top_inst.tip?
             if (!tip) begin
-                state_next = ST_STOP;
+                //state_next = ST_STOP;
+                state_next = ST_PRE_2;
             end
-            //state_next = ST_STOP;
+        end
+        ST_PRE_2: begin
+            state_next = ST_STOP;
         end
     endcase
 end

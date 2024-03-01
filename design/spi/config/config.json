@@ -4,20 +4,16 @@
     "clock": "wb_clk_i",
     "reset": "wb_rst_i",
     "reset_input_values": {
-        "qreqn": "1'b1",
-        "wb_stb_i": "1'b0",
-        "wb_cyc_i": "1'b0"
+        "qreqn": "1'b1"
     },
 
     "power_interface_outputs": [
         "qacceptn",
         "qdeny"
     ],
-    "standby_condition": "!qreqn && !qacceptn",
+    "restore_condition": "",
     "check_condition": "qacceptn",
 
-    "formal_constraints": "design/spi/config/aip.v",
-
     "src": "design/spi/config/source.json",
-    "dst": "design/spi/config/solution.json"
+    "dst": "design/spi/work/solution.json"
 }

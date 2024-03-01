@@ -7,6 +7,7 @@ jgproject*/
 
 # Design directories
 design/aquarius/
+design/old_spi/
 design/old_wb_dma/
 design/spi/*
 !design/spi/config/
