@@ -122,7 +122,7 @@ always @(rd_adr or r0 or r1 or r2 or r3 or re or we or din)
 	   4'h4:	dout = r2;
 	   4'h8:	dout = r3;
 
-	   default:	dout = r0;	// Modified
+	   default: dout = r0;
 	endcase
 
 endmodule

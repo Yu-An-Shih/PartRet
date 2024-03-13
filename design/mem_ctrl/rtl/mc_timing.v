@@ -750,8 +750,7 @@ always @(tms_x or page_size)
 	   3'h2: burst_val = 11'h4;
 	   3'h3: burst_val = 11'h8;
 	   3'h7: burst_val = page_size;
-
-	   default: burst_val = 11'h1;	// Modified
+	   default: burst_val = 11'h1;
 	endcase
 
 assign bc_dec = wr_cycle ? mem_ack_d : dv;
@@ -888,7 +887,7 @@ always @(state or cs_a or cs_le or cs_le_r or
 
 	mc_c_oe_d = 1'b1;
 
-	case(state)		// Modified
+	case(state)
 `ifdef MC_POR_DELAY
 	   POR:
 	      begin
@@ -935,7 +934,7 @@ always @(state or cs_a or cs_le or cs_le_r or
 		if(cs_a & (wb_read_go | wb_write_go) & lookup_ready2)
 		  begin
 		   wb_cycle_set = 1'b1;
-		   case(mem_type)		// Modified
+		   case(mem_type)
 		     `MC_MEM_TYPE_SDRAM:		// SDRAM
 			if((lookup_ready2) & !wb_wait)
 			   begin

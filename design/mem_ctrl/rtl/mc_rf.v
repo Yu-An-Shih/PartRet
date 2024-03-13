@@ -266,7 +266,7 @@ always @(wb_addr_i or csr or poc or csc_mask or csc0 or tms0 or csc1 or
 	   5'h12:	rf_dout <= #1 csc7;
 	   5'h13:	rf_dout <= #1 tms7;
 
-	   default:	rf_dout <= #1 csr;	// Modified
+	   default: rf_dout <= #1 csr;
 	endcase
 
 ////////////////////////////////////////////////////////////////////

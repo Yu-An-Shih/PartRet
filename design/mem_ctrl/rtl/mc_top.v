@@ -132,12 +132,12 @@ input		clk_i, rst_i;
 input	[31:0]	wb_data_i;
 output	[31:0]	wb_data_o;
 input	[31:0]	wb_addr_i;
-input	[3:0]	wb_sel_i;	// indicates where valid data is/should be placed on DAT_I/DAT_O
-input		wb_we_i;		// write enable
-input		wb_cyc_i;		// indicates a valid bus cycle is in progress
-input		wb_stb_i;		// indicates that the slave is selected
-output		wb_ack_o;		// indicates termination of a normal bus cycle
-output		wb_err_o;		// indicates an abnormal cycle termination
+input	[3:0]	wb_sel_i;
+input		wb_we_i;
+input		wb_cyc_i;
+input		wb_stb_i;
+output		wb_ack_o;
+output		wb_err_o;
 
 // --------------------------------------
 // Suspend Resume Interface
@@ -290,7 +290,7 @@ always @(posedge clk_i)
 // Modules
 //
 
-mc_rf		u0(		// register file (includes power-on config)
+mc_rf		u0(
 		.clk(		clk_i		),
 		.rst(		rst_i		),
 		.wb_data_i(	wb_data_i	),
@@ -389,7 +389,7 @@ mc_dp		u3(
 		.par_err(	par_err		)
 		);
 
-mc_refresh	u4(		// Refresh Controller
+mc_refresh	u4(
 		.clk(		clk_i		),
 		.rst(		rst_i		),
 		.cs_need_rfr(	cs_need_rfr	),
@@ -460,7 +460,7 @@ mc_timing	u5(
 		.init_ack(	init_ack	)
 		);
 
-mc_wb_if	u6(		// WISHBONE IF
+mc_wb_if	u6(
 		.clk(		clk_i		),
 		.rst(		rst_i		),
 		.wb_addr_i(	wb_addr_i	),

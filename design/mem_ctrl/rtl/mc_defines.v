@@ -142,14 +142,14 @@
 `endif
 
 // Defines the default (reset) TMS value for the DEF_SEL chip select
-`define	MC_DEF_POR_TMS 	32'hffff_ffff
-
+//`define	MC_DEF_POR_TMS 	32'hffff_ffff
+`define	MC_DEF_POR_TMS 	32'hffff_0000
 
 /////////////////////////////////////////////////////////////////////
 //
 // Define how many Chip Selects to Implement
 //
-// `define MC_HAVE_CS1	1
+`define MC_HAVE_CS1	1
 //`define MC_HAVE_CS2	1
 //`define MC_HAVE_CS3	1
 //`define MC_HAVE_CS4	1
@@ -188,7 +188,8 @@
 // This value defines how many MEM_CLK cycles the Memory Controller should
 // stall. Default is 2.5uS. At a 10nS MEM_CLK cycle time, this would 250
 // cycles.
-`define	MC_POR_DELAY_VAL	8'd250
+//`define	MC_POR_DELAY_VAL	8'd250
+`define	MC_POR_DELAY_VAL	8'd0
 
 
 // ===============================================================

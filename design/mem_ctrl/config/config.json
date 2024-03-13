@@ -7,19 +7,62 @@
     "reset_input_values": {
         "wb_stb_i": "1'b0",
         "wb_cyc_i": "1'b0",
-        "susp_req_i": "1'b0",
         "resume_req_i": "1'b0",
-        "mc_data_pad_i": "{28'hzzz_zzzz, 2'b11, 2'b10}",
-        "mc_ack_pad_i": "1'b0"
+        "mc_data_pad_i": "{28'b0, 2'b11, 2'b10}",
+        "mc_ack_pad_i": "1'b0",
+
+        "wb_we_i": "1'b0",
+        "wb_sel_i": "4'b0",
+        "wb_addr_i": "32'b0",
+        "wb_data_i": "32'b0",
+        "susp_req_i": "1'b0",
+        "mc_br_pad_i": "1'b0",
+        "mc_dp_pad_i": "4'b0",
+        "mc_sts_pad_i": "1'b0"
     },
+    "non_resettable_regs": [
+        "u1.acs_addr",
+        "u1.bank_adr",
+        "u1.col_adr",
+        "u1.row_adr",
+        "u1.sram_addr",
+        "u1.u0.out_r",
+        "u2.u0.b0_last_row",
+        "u2.u0.b1_last_row",
+        "u2.u0.b2_last_row",
+        "u2.u0.b3_last_row",
+        "u2.u1.b0_last_row",
+        "u2.u1.b1_last_row",
+        "u2.u1.b2_last_row",
+        "u2.u1.b3_last_row",
+        "u3.byte0",
+        "u3.byte1",
+        "u3.byte2",
+        "u3.mc_data_o",
+        "u3.mc_dp_o",
+        "u3.u0.r0",
+        "u3.u0.r1",
+        "u3.u0.r2",
+        "u3.u0.r3",
+        "u5.burst_act_rd",
+        "u5.burst_cnt",
+        "u5.ir_cnt",
+        "u5.ir_cnt_done",
+        "u5.timer2",
+        "u6.wb_data_o",
+        "u7.mc_addr[14:13]",
+        "u7.mc_addr[9:0]",
+        "u7.mc_data_o",
+        "u7.mc_dp_o",
+        "u7.mc_dqm_r",
+        "u7.mc_dqm_r2"
+    ],
     
     "power_interface_outputs": [
         "suspended_o"
     ],
-    "standby_condition": "suspended_o && !resume_req_i",
+    "restore_condition": "",
     "check_condition": "!suspended_o",
-
-    "formal_constraints": "design/mem_ctrl/config/aip.v",
     
     "src": "design/mem_ctrl/config/source.json",
     "dst": "design/mem_ctrl/work/solution.json"

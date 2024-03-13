@@ -117,17 +117,17 @@ module mc_wb_if(clk, rst,
 
 input		clk, rst;
 input	[31:0]	wb_addr_i;
-input		wb_cyc_i;		// indicates a valid bus cycle is in progress
-input		wb_stb_i;		// indicates that the slave is selected
-input		wb_we_i;		// write enable
-output		wb_err;			// indicates an abnormal bus cycle termination
-output		wb_ack_o;		// indicates termination of a normal bus cycle
-output		wb_read_go;		// read cycle for memory
-output		wb_write_go;	// write cycle for memory
+input		wb_cyc_i;
+input		wb_stb_i;
+input		wb_we_i;
+output		wb_err;
+output		wb_ack_o;
+output		wb_read_go;
+output		wb_write_go;
 output		wb_first;
 output		wb_wait;
 input		mem_ack;
-output		wr_hold;		// indicates that wb_we_i is asserted in the last cycle
+output		wr_hold;
 input		err, par_err, wp_err;
 output	[31:0]	wb_data_o;
 input	[31:0]	mem_dout, rf_dout;
@@ -145,7 +145,7 @@ reg		write_go_r1;
 reg		wb_first_r;
 wire		wb_first_set;
 reg		wr_hold;
-wire		rmw;			// read -> write in the same bus cycle
+wire		rmw;
 reg		rmw_r;
 reg		rmw_en;
 reg		wb_ack_o;

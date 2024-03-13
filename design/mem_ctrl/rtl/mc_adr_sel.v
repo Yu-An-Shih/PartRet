@@ -169,8 +169,6 @@ always @(posedge clk)
 		   `MC_BW_8:	acs_addr <= #1 wb_addr_i[23:0];
 		   `MC_BW_16:	acs_addr <= #1 wb_addr_i[24:1];
 		   `MC_BW_32:	acs_addr <= #1 wb_addr_i[25:2];
-
-		   default:		acs_addr <= #1 wb_addr_i[23:0];		// Modified
 		endcase
 	else
 	if(next_adr)		acs_addr <= #1 acs_addr_pl1;
@@ -200,8 +198,6 @@ always @(posedge clk)
 	   {`MC_BW_32, `MC_MEM_SIZE_64}:	col_adr <= #1 {2'h0, wb_addr_i[09:2]};
 	   {`MC_BW_32, `MC_MEM_SIZE_128}:	col_adr <= #1 {2'h0, wb_addr_i[09:2]};
 	   {`MC_BW_32, `MC_MEM_SIZE_256}:	col_adr <= #1 {2'h0, wb_addr_i[09:2]};
-
-	   default:							col_adr <= #1 {1'h0, wb_addr_i[10:2]};	// Modified
 	endcase
 
 always @(posedge clk)
@@ -220,8 +216,6 @@ always @(posedge clk)
 		   {`MC_BW_32, `MC_MEM_SIZE_64}:	row_adr <= #1 {2'h0, wb_addr_i[22:12]};
 		   {`MC_BW_32, `MC_MEM_SIZE_128}:	row_adr <= #1 {1'h0, wb_addr_i[23:12]};
 		   {`MC_BW_32, `MC_MEM_SIZE_256}:	row_adr <= #1        wb_addr_i[24:12];
-
-		   default:							row_adr <= #1 {1'h0, wb_addr_i[24:13]};	// Modified
 		endcase
 	else
 		casex({bus_width, mem_size})
@@ -236,8 +230,6 @@ always @(posedge clk)
 		   {`MC_BW_32, `MC_MEM_SIZE_64}:	row_adr <= #1 {2'h0, wb_addr_i[20:10]};
 		   {`MC_BW_32, `MC_MEM_SIZE_128}:	row_adr <= #1 {1'h0, wb_addr_i[21:10]};
 		   {`MC_BW_32, `MC_MEM_SIZE_256}:	row_adr <= #1        wb_addr_i[22:10];
-
-		   default:							row_adr <= #1 {1'h0, wb_addr_i[22:11]};	// Modified
 		endcase
      end
 
@@ -258,8 +250,6 @@ always @(posedge clk)
 		   {`MC_BW_32, `MC_MEM_SIZE_64}:	bank_adr <= #1 wb_addr_i[11:10];
 		   {`MC_BW_32, `MC_MEM_SIZE_128}:	bank_adr <= #1 wb_addr_i[11:10];
 		   {`MC_BW_32, `MC_MEM_SIZE_256}:	bank_adr <= #1 wb_addr_i[11:10];
-
-		   default:							bank_adr <= #1 wb_addr_i[12:11];	// Modified
 		endcase
 	else
 		casex({bus_width, mem_size})
@@ -274,8 +264,6 @@ always @(posedge clk)
 		   {`MC_BW_32, `MC_MEM_SIZE_64}:	bank_adr <= #1 wb_addr_i[22:21];
 		   {`MC_BW_32, `MC_MEM_SIZE_128}:	bank_adr <= #1 wb_addr_i[23:22];
 		   {`MC_BW_32, `MC_MEM_SIZE_256}:	bank_adr <= #1 wb_addr_i[24:23];
-
-		   default:							bank_adr <= #1 wb_addr_i[24:23];	// Modified
 		endcase
      end
 
@@ -293,7 +281,7 @@ always @(bus_width or mem_size)
 	   {`MC_BW_32, `MC_MEM_SIZE_128}:	page_size = 11'd256;
 	   {`MC_BW_32, `MC_MEM_SIZE_256}:	page_size = 11'd256;
 
-	   default:							page_size = 11'd512;	// Modified
+	   default: 						page_size = 11'd512;
 	endcase
 
 endmodule
