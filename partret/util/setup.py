@@ -249,6 +249,10 @@ class Setup(Checker):
         # Target content
         # - wrapper.sv
         wrapper = os.path.join(self._workdir, 'wrapper.sv')
+
+        if os.path.isfile(wrapper):
+            self._logger.dump('Warning: wrapper.sv already exists. Skipping this step.')
+            return
         
         sig_declare_list = []
 
@@ -352,6 +356,10 @@ class Setup(Checker):
         # Target content
         # - ret_checker.tcl: proof script for the partial retention check
         ret_checker = os.path.join(self._workdir, 'ret_checker.tcl')
+
+        if os.path.isfile(ret_checker):
+            self._logger.dump('Warning: ret_checker.tcl already exists. Skipping this step.')
+            return
         
         cmds = [
             '# This is the Jasper script for the self composition check.',
