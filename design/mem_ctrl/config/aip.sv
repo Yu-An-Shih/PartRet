@@ -30,7 +30,7 @@ assume property (@(posedge clk_i) (($past(wb_stb_i && !wb_ack_o) && wb_stb_i && 
 
 // Optional WISHBONE interface assumptions
 assume property (@(posedge clk_i) wb_addr_i[31:29] == 3'b000);  // Always selects memory - never modifies configuration registers
-assume property (@(posedge clk_i) disable iff (rst_i) wb_addr_i[28:21] == 8'b0000_0000);  // BA_MASK
+assume property (@(posedge clk_i) wb_addr_i[28:21] == 8'b0000_0000);  // BA_MASK
 
 assume property (@(posedge clk_i) (wb_stb_i == wb_cyc_i));
 
@@ -38,6 +38,18 @@ assume property (@(posedge clk_i) (wb_stb_i == wb_cyc_i));
 
 
 // Memory interface
+
+// Power-On Configuration
+reg	rst_r1;
+
+always @(posedge mc_clk_i or posedge rst_i)
+	if(rst_i)	rst_r1 <= #1 1'b1;
+	else		rst_r1 <= #1 1'b0;
+
+// assume property (@(posedge clk_i) rst_i |-> mc_data_pad_i == {28'hzzz_zzzz, 2'b11, 2'b10});                         // Declare in ret_check.tcl?
+//assume property (@(posedge clk_i) rst_r3 |-> mc_data_pad_i == {28'b0, 2'b11, 2'b10});    // Sync. Device, 32-bit data bus
+assume property (@(posedge mc_clk_i) rst_r1 |-> mc_data_pad_i[3:0] == {2'b11, 2'b10});    // Sync. Device, 32-bit data bus
+
 
 assert property (@(posedge mc_clk_i) (mc_cs_pad_o_[7:1] == 7'b111_1111));   // Only chip select 0 is used
 
@@ -52,9 +64,9 @@ wire mem_op = ~mc_cs & (~mc_oe | ~mc_we);
 assert property (@(posedge mc_clk_i) ($fell(mc_cs) |-> $past(~mc_ack_pad_i)));
 assert property (@(posedge mc_clk_i) ($rose(mc_cs) |-> $past(mc_ack_pad_i)));
 
-assume property (@(posedge mc_clk_i) ($rose(mc_ack_pad_i) |-> ~mc_cs));
-assume property (@(posedge mc_clk_i) ($fell(mc_ack_pad_i) |-> mc_cs));
-assume property (@(posedge mc_clk_i) ($rose(mc_cs) |-> $fell(mc_ack_pad_i)));
+assume property (@(posedge mc_clk_i) ($rose(mc_ack_pad_i) |-> $past(mem_op)));
+assume property (@(posedge mc_clk_i) ($fell(mc_ack_pad_i) |-> $fell(mem_op)));  // optional?
+assume property (@(posedge mc_clk_i) ($fell(mem_op) |-> $fell(mc_ack_pad_i)));
 
 //assert property (@(posedge mc_clk_i) ~mc_cs |-> (~mc_oe & mc_we) || (mc_oe & ~mc_we));
 assert property (@(posedge mc_clk_i) $fell(mc_cs) |=> (~mc_oe & mc_we) || (mc_oe & ~mc_we));
@@ -73,6 +85,7 @@ assume property (@(posedge mc_clk_i) mc_sts_pad_i == 1'b0);
 
 // Optional memory interface assumptions
 //assume property (@(posedge mc_clk_i) $fell(mc_cs) |-> ##[0:$] $rose(mc_ack_pad_i));
+assume property (@(posedge mc_clk_i) ($rose(mem_op) |=> $rose(mc_ack_pad_i)));
 
 
 // Power management interface
@@ -92,18 +105,15 @@ assert property (@(posedge clk_i) ($rose(resume_req_i) |-> ##[0:$] $fell(suspend
 // Optional power management assumption
 //assume property (@(posedge clk_i) ($rose(suspended_o) |-> ##[1:$] $rose(resume_req_i)));
 
-
 // Constraints for retention registers
 
-//wire standby_state = suspended_o && !resume_req_i;
-//assume property (@(posedge clk_i) ($rose(pr_restore) |-> $past(standby_state)));
-//assume property (@(posedge clk_i) ($rose(pr_restore) |=> $rose(resume_req_i) && $fell(pr_restore)));
-//assume property (@(posedge clk_i) (standby_state && !pr_restore |=> !resume_req_i));
-
-assume property (@(posedge clk_i) ($rose(pr_restore) |-> $rose(suspended_o)));
-assume property (@(posedge clk_i) ($rose(suspended_o) |-> $rose(pr_restore)));
-assume property (@(posedge clk_i) ($rose(pr_restore) |=> $rose(resume_req_i) && $fell(pr_restore)));
+assume property (@(posedge clk_i) $rose(suspended_o) |=> $rose(pr_restore));
+assume property (@(posedge clk_i) $rose(pr_restore) |-> $past($rose(suspended_o)));
+assume property (@(posedge clk_i) $rose(pr_restore) |=> $rose(resume_req_i) && $fell(pr_restore));
+assume property (@(posedge clk_i) $rose(resume_req_i) |-> $past($rose(pr_restore)));
+//assume property (@(posedge clk_i) $fell(pr_restore) |-> $past($rose(pr_restore)));
 
 
-// Optional: No memory operation and suspend request at the same time
+// TODO: interaction between interfaces (Optional)
+// No memory operation and suspend request at the same time
 //assume property (@(posedge clk_i) !(wb_stb_i && susp_req_i));
