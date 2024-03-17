@@ -19,6 +19,9 @@ design/mem_ctrl/*
 design/wb_dma/*
 !design/wb_dma/config/
 !design/wb_dma/rtl/
+design/picorv32/*
+!design/picorv32/config/
+!design/picorv32/rtl/
 
 # Log files
 *.log
