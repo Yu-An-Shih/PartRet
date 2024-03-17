@@ -31,11 +31,11 @@ class Checker:
 
         self._clock = ""
         self._secondary_clocks = {}
-        self._reset = ""
+        #self._reset = ""    # TODO: remove this
+        self._resets = {}
         self._top_module = ""
         self._reset_input_vals = {}
 
-        #self._standby_cond = "" # TODO: get rid of this
         self._check_cond = ""
 
         # TODO: restore condition
@@ -77,8 +77,11 @@ class Checker:
             self._secondary_clocks = config['secondary_clocks']
 
         # reset
-        assert isinstance(config['reset'], str)
-        self._reset = config['reset']
+        #assert isinstance(config['reset'], str)
+        #self._reset = config['reset']
+
+        assert isinstance(config['resets'], dict)
+        self._resets = config['resets']
 
         # top module
         assert isinstance(config['top_module'], str)
@@ -95,19 +98,9 @@ class Checker:
             assert isinstance(config['reset_input_values'], dict)
             self._reset_input_vals = config['reset_input_values']
         
-        # standby condition # TODO: get rid of this
-        #assert isinstance(config['standby_condition'], str)
-        #self._standby_cond = config['standby_condition']
-        
         # check condition
         assert isinstance(config['check_condition'], str)
         self._check_cond = config['check_condition']
-
-        # formal constraints
-        # TODO: get rid of this
-        #assert os.path.isfile(config['formal_constraints'])
-        #with open(config['formal_constraints'], 'r') as fr:
-        #    self._formal_constraints = fr.read().splitlines()
 
         # design information
         design_info = os.path.join(self._workdir, 'design_info.json')
@@ -117,7 +110,8 @@ class Checker:
             design_info = json.load(f)
         
         # input and output lists
-        excluded = [self._clock, self._reset] + list(self._secondary_clocks.keys())
+        #excluded = [self._clock, self._reset] + list(self._secondary_clocks.keys())
+        excluded = [self._clock] + list(self._secondary_clocks.keys()) + list(self._resets.keys())
         self._input_width_list = {input: width for input, width in design_info['input_list'].items() if input not in excluded}
         self._output_width_list = design_info['output_list']
 
@@ -201,7 +195,7 @@ class Checker:
         # read Verilog files
         design_files = self._get_design_files()
         for file in design_files:
-            cmds.append('read_verilog {}'.format(file))   # TODO: mem2reg?
+            cmds.append('read_verilog -mem2reg {}'.format(file))   # TODO: mem2reg?
         
         if self._top_module:
             cmds.append('hierarchy -check -top {}'.format(self._top_module))

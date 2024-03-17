@@ -210,16 +210,16 @@ class Explorer(Checker):
         # clock and reset
         sig_declare_list += [
             'reg {} = 1;'.format(self._clock),
-            'reg {} = 0;'.format(self._reset)
+            #'reg {} = 0;'.format(self._reset)
         ]
         
         golden_port_list += [
             '    .{}({}),'.format(self._clock, self._clock),
-            '    .{}({}),'.format(self._reset, self._reset)
+            #'    .{}({}),'.format(self._reset, self._reset)
         ]
         test_port_list += [
             '    .{}({}),'.format(self._clock, self._clock),
-            '    .{}({}),'.format(self._reset, self._reset)
+            #'    .{}({}),'.format(self._reset, self._reset)
         ]
 
         for clk in self._secondary_clocks:
@@ -227,6 +227,13 @@ class Explorer(Checker):
             
             golden_port_list.append('    .{}({}),'.format(clk, clk))
             test_port_list.append('    .{}({}),'.format(clk, clk))
+        
+        # resets
+        for reset, val in self._resets.items():
+            sig_declare_list.append('reg {} = {};'.format(reset, 1 - val))
+            
+            golden_port_list.append('    .{}({}),'.format(reset, reset))
+            test_port_list.append('    .{}({}),'.format(reset, reset))
         
         # input ports
         for input, width in self._input_width_list.items():
@@ -300,11 +307,12 @@ class Explorer(Checker):
                 'design_test.{} = 0;'.format(reg_renamed)
             ]
         init += [ '' ]
-
+        
         cycles = [
             '// Reset',
             '#1;',
-            '{} = 1\'b1;'.format(self._reset),
+            #'{} = 1\'b1;'.format(self._reset),
+            ' '.join([ '{} = {};'.format(reset, val) for reset, val in self._resets.items() ]),
             'repeat ({}) @(posedge {});'.format(10 * max_factor, self._clock),  # TODO: config reset cycles
             #'#1;',
             #'{} = 1\'b0;'.format(self._reset),
@@ -325,7 +333,8 @@ class Explorer(Checker):
                 cycle += [
                     '',
                     '// End reset',
-                    '{} = 1\'b0;'.format(self._reset),
+                    #'{} = 1\'b0;'.format(self._reset),
+                    ' '.join([ '{} = {};'.format(reset, 1 - val) for reset, val in self._resets.items() ]),
                     ''
                 ]
                 cycle += init
@@ -428,7 +437,7 @@ class Explorer(Checker):
             '        # remove "design_golden."',
             '        set reg [string range $reg 14 end]',
             '        if { [string first "." $reg] != -1 } {',
-            '            set reg_test "\\\\${reg}"',
+            '            set reg_test "\\\\$reg"',
             '        } else {',
             '            set reg_test $reg',
             '        }',

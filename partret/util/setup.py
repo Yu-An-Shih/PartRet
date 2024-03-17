@@ -86,7 +86,13 @@ class Setup(Checker):
         for clk, factor in self._secondary_clocks.items():
             cmds.append('clock {} -factor {}'.format(clk, factor))
         
-        cmds.append('reset {} -non_resettable_regs 0'.format(self._reset))
+        #cmds.append('reset {} -non_resettable_regs 0'.format(self._reset))
+
+        reset_constraints = []
+        for reg, val in self._resets.items():
+            assert val in [0, 1]
+            reset_constraints.append(reg if val else '~{}'.format(reg))
+        cmds.append('reset {{{}}} -non_resettable_regs 0'.format(' '.join(reset_constraints)))
 
         # Assumptions during reset
         for input, val in self._reset_input_vals.items():
@@ -128,7 +134,7 @@ class Setup(Checker):
         output_widths = get_signal_width(output_list)
         
         # register list # TODO: no need for this?
-        reg_widths = get_signal_width(register_list)
+        #reg_widths = get_signal_width(register_list)
 
         # register reset values
         with open(reset_values, 'r') as fr:
@@ -139,7 +145,7 @@ class Setup(Checker):
             info = {
                 'input_list': input_widths,
                 'output_list': output_widths,
-                'register_list': reg_widths,
+                #'register_list': reg_widths,
                 'reset_values': reg_resets
             }
             json.dump(info, fw, indent=4)
@@ -264,16 +270,16 @@ class Setup(Checker):
         # clock and reset
         sig_declare_list += [
             'wire {};'.format(self._clock),
-            'wire {};'.format(self._reset)
+            #'wire {};'.format(self._reset)
         ]
         
         golden_port_list += [
             '    .{}({}),'.format(self._clock, self._clock),
-            '    .{}({}),'.format(self._reset, self._reset)
+            #'    .{}({}),'.format(self._reset, self._reset)
         ]
         test_port_list += [
             '    .{}({}),'.format(self._clock, self._clock),
-            '    .{}({}),'.format(self._reset, self._reset)
+            #'    .{}({}),'.format(self._reset, self._reset)
         ]
 
         for clk in self._secondary_clocks:
@@ -281,6 +287,13 @@ class Setup(Checker):
             
             golden_port_list.append('    .{}({}),'.format(clk, clk))
             test_port_list.append('    .{}({}),'.format(clk, clk))
+        
+        # reset
+        for reset in self._resets.keys():
+            sig_declare_list.append('wire {};'.format(reset))
+            
+            golden_port_list.append('    .{}({}),'.format(reset, reset))
+            test_port_list.append('    .{}({}),'.format(reset, reset))
         
         # input ports
         for input, width in self._input_width_list.items():
@@ -387,7 +400,13 @@ class Setup(Checker):
         for clk, factor in self._secondary_clocks.items():
             cmds.append('clock {} -factor {}'.format(clk, factor))
         
-        cmds.append('reset {} -non_resettable_regs 0'.format(self._reset))
+        #cmds.append('reset {} -non_resettable_regs 0'.format(self._reset))
+        
+        reset_constraints = []
+        for reg, val in self._resets.items():
+            assert val in [0, 1]
+            reset_constraints.append(reg if val else '~{}'.format(reg))
+        cmds.append('reset {{{}}} -non_resettable_regs 0'.format(' '.join(reset_constraints)))
 
         cmds += [
             '',
@@ -410,11 +429,21 @@ class Setup(Checker):
         power_out_equivs = [ '({} == {}_test)'.format(out, out) for out in self._power_outputs ]
         non_power_out_equivs = [ '({} == {}_test)'.format(out, out) for out in self._non_power_outputs ]
 
+        #cmds += [
+        #    #'assert -disable {.*} -regexp',
+        #    #'',
+        #    '# TODO: You can modify the expression part of this assertion.',
+        #    'assert -name output_equiv {{ @(posedge {}) disable iff ({})'.format(self._clock, self._reset),
+        #    '    ( ' + ' &&\n    '.join(power_out_equivs) + ' ) &&',
+        #    '    ( !({}) ||'.format(self._check_cond),
+        #    '    ( ' + ' &&\n    '.join(non_power_out_equivs) + ' ) )',
+        #    '}',
+        #    ''
+        #]
+
         cmds += [
-            #'assert -disable {.*} -regexp',
-            #'',
             '# TODO: You can modify the expression part of this assertion.',
-            'assert -name output_equiv {{ @(posedge {}) disable iff ({})'.format(self._clock, self._reset),
+            'assert -name output_equiv {{ @(posedge {})'.format(self._clock),
             '    ( ' + ' &&\n    '.join(power_out_equivs) + ' ) &&',
             '    ( !({}) ||'.format(self._check_cond),
             '    ( ' + ' &&\n    '.join(non_power_out_equivs) + ' ) )',
