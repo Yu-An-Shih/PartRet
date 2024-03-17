@@ -39,7 +39,8 @@ class YosysSolver:
         #return golden_sig.replace('.', '__').replace('[', '__').replace(']', '')
         
         if '.' in golden_sig:
-            test_sig = '\\' + golden_sig.replace('[', ' [')
+            #test_sig = '\\' + golden_sig.replace('[', ' [')
+            test_sig = '\\' + golden_sig
         else:
             test_sig = golden_sig
         

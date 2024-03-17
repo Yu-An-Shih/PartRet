@@ -159,6 +159,9 @@ class JasperSolver:
         candid_regs_str = candid_regs_str.split(suffix)[0]
         candid_regs_str = candid_regs_str.strip()
 
+        # Remove all '{}'s surrounding the register names
+        candid_regs_str = candid_regs_str.replace('{', '').replace('}', '')
+
         return candid_regs_str.split()
 
     
