@@ -2,7 +2,9 @@
     "RTL": [ "design/wb_dma/rtl/" ],
     "top_module": "wb_dma_qchannel",
     "clock": "clk_i",
-    "reset": "rst_i",
+    "resets": {
+        "rst_i": 1
+    },
     "reset_input_values": {
         "qreqn": "1'b1"
     },
@@ -17,18 +19,18 @@
         "wb_dma_top_inst.u2.chunk_0",
         "wb_dma_top_inst.u2.chunk_cnt",
         "wb_dma_top_inst.u2.chunk_cnt_is_0_r",
-        "wb_dma_top_inst.u2.mast0_adr[31:2]",
-        "wb_dma_top_inst.u2.mast1_adr[31:2]",
+        "wb_dma_top_inst.u2.mast0_adr [31:2]",
+        "wb_dma_top_inst.u2.mast1_adr [31:2]",
         "wb_dma_top_inst.u2.tsz_cnt",
         "wb_dma_top_inst.u2.tsz_cnt_is_0_r",
         "wb_dma_top_inst.u2.u0.out_r",
         "wb_dma_top_inst.u2.u1.out_r",
         "wb_dma_top_inst.u3.u0.mast_dout",
         "wb_dma_top_inst.u4.u0.mast_dout",
-        "wb_dma_top_inst.u1.adr0[31:2]",
-        "wb_dma_top_inst.u1.adr1[31:2]",
-        "wb_dma_top_inst.u1.txsz[11:0]",
-        "wb_dma_top_inst.u1.txsz[26:15]"
+        "wb_dma_top_inst.u1.adr0 [31:2]",
+        "wb_dma_top_inst.u1.adr1 [31:2]",
+        "wb_dma_top_inst.u1.txsz [11:0]",
+        "wb_dma_top_inst.u1.txsz [26:15]"
     ],
 
     "power_interface_outputs": [
