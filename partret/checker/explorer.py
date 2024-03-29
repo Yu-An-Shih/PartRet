@@ -9,7 +9,7 @@ import sys
 
 from partret.checker.checker import Checker
 from partret.config import Config
-from partret.solver.icarus import IcarusSolver
+from partret.solver.simulator import VCSSolver
 from partret.solver.jasper import JasperSolver
 from partret.solver.yosys import YosysSolver
 #from partret.util.generic import rename_to_test_sig
@@ -35,8 +35,8 @@ class Explorer(Checker):
         #self._unknown_regs = self._regs - self._ret_regs - self._non_ret_regs
         self._reg_batches = None
 
-        self._iv_solver = IcarusSolver(config, logger, workdir)
-        # TODO: self._iv_solver = IcarusSolver(config, self._design_files, logger, workdir)
+        #self._simulator = IcarusSolver(config, self._design_files, logger, workdir)
+        self._simulator = VCSSolver(config, self._design_files, logger, workdir)
 
         # Timing information
         self._timer = Timer(logger)
@@ -182,15 +182,17 @@ class Explorer(Checker):
                     self._gen_partret_design(self._non_ret_regs | (self._unknown_regs - set(new_ret + ret_candids)))
 
                     # simulate
-                    sim_msg = self._iv_solver.exec(self._get_design_files())
-                    # TODO: sim_msg = self._iv_solver.exec()
+                    #sim_msg = self._iv_solver.exec(self._get_design_files())
+                    sim_msg = self._simulator.exec()
 
                     # Debug
                     #self._logger.dump('Remove {}:'.format(candid))
                     #self._logger.dump(sim_msg.strip().split('\n')[-1])
+                    #self._logger.dump(sim_msg.split('$finish')[0].strip().split('\n')[-1])
                     
                     # extend retention list
-                    if IcarusSolver.is_cex(sim_msg):
+                    #if IcarusSolver.is_cex(sim_msg):
+                    if VCSSolver.is_cex(sim_msg):
                         new_ret.append(candid)
 
                 assert len(new_ret) > 0
@@ -297,6 +299,7 @@ class Explorer(Checker):
 
         lines = []
         
+        #lines += ['`timescale 1ns / 1ps', '', 'module wrapper;', '']
         lines += ['module wrapper;', '']
         lines += sig_declare_list + ['']
         lines += assignment_list + ['']
