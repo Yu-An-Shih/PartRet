@@ -38,7 +38,7 @@ class JasperSolver:
         return res.stdout.decode('utf-8')
     
     
-    def _parse_jg_result(self, out_msg):
+    def _parse_jg_result(self, out_msg) -> dict:
         """ Parse Jasper output """
         
         # get the proof result (proved/cex/max_trace_length)

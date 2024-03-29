@@ -14,6 +14,7 @@ from partret.solver.jasper import JasperSolver
 from partret.solver.yosys import YosysSolver
 #from partret.util.generic import rename_to_test_sig
 from partret.util.image import Image
+from partret.util.timer import Timer
 
 class Explorer(Checker):
     """ Automatic tool to determine the optimal retention register list """
@@ -35,6 +36,10 @@ class Explorer(Checker):
         self._reg_batches = None
 
         self._iv_solver = IcarusSolver(config, logger, workdir)
+        # TODO: self._iv_solver = IcarusSolver(config, self._design_files, logger, workdir)
+
+        # Timing information
+        self._timer = Timer(logger)
     
 
     def minimize_retention_list(self):
@@ -68,16 +73,19 @@ class Explorer(Checker):
             res = self._solver._parse_jg_result(out_msg)
             self._logger.dump(res)
 
+            # update timing information
+            self._timer.update_time(res['output_equiv'])
+            
             if JasperSolver.is_proven(res):
                 self._non_ret_regs |= target_regs
             elif JasperSolver.is_cex(res):
                 if len(target_regs) == 1:
                     self._ret_regs |= target_regs
             else:
-                self._logger.dump('Error: Failed to prove property within {}s.'.format(Config.DEFAULT_TIMEOUT))
+                self._logger.dump('Error: Failed to prove property within {}s.'.format(Config.DEFAULT_VERIF_TIMEOUT))
                 self._logger.dump('The registers in the retention list are sufficient but may not be necessary.')
                 self._logger.dump('Exitting...')
-                sys.exit(0)
+                break
             
             self._unknown_regs -= (self._ret_regs | self._non_ret_regs)
             target_regs = self._get_target_regs()
@@ -85,8 +93,17 @@ class Explorer(Checker):
             # record the current solution
             self._dst.take_screenshot(self._ret_regs, self._non_ret_regs, self._unknown_regs)
 
-        assert not self._unknown_regs
-        assert self._regs == (self._ret_regs | self._non_ret_regs)
+            # Check for timeout
+            if self._timer.get_elapsed_time() > Config.DEFAULT_TIMEOUT:
+                self._logger.dump('Timeout: Solving time ({}s) is larger than {}s.'.format(self._timer.get_elapsed_time(), Config.DEFAULT_TIMEOUT))
+                self._logger.dump('Exitting...')
+                break
+
+        #assert not self._unknown_regs
+        #assert self._regs == (self._ret_regs | self._non_ret_regs)
+
+        # report solving information
+        self._report_solving_info()
 
     
     def complete_retention_list(self):
@@ -126,6 +143,9 @@ class Explorer(Checker):
             res = self._solver._parse_jg_result(out_msg)
             self._logger.dump(res)
 
+            # update timing information
+            self._timer.update_time(res['output_equiv'])
+
             if JasperSolver.is_proven(res):
                 # all unknown registers can be safely non-retained
 
@@ -155,6 +175,7 @@ class Explorer(Checker):
                 new_ret = []
                 while len(ret_candids) > 0:
                     candid = ret_candids.pop()
+                    #candid = ret_candids.pop(0)
 
                     # generate partial retention design
                     # TODO: for simulation, create a large power-collapsible design instead?
@@ -162,6 +183,7 @@ class Explorer(Checker):
 
                     # simulate
                     sim_msg = self._iv_solver.exec(self._get_design_files())
+                    # TODO: sim_msg = self._iv_solver.exec()
 
                     # Debug
                     #self._logger.dump('Remove {}:'.format(candid))
@@ -181,16 +203,25 @@ class Explorer(Checker):
                 self._ret_regs |= set(new_ret)
                 self._unknown_regs -= set(new_ret)
             else:
-                self._logger.dump('Error: Failed to prove property within {}s.'.format(Config.DEFAULT_TIMEOUT))
+                self._logger.dump('Error: Failed to prove property within {}s.'.format(Config.DEFAULT_VERIF_TIMEOUT))
                 self._logger.dump('The registers in the retention list are necessary but may not be sufficient.')
                 self._logger.dump('Exitting...')
-                sys.exit(0)
+                break
 
             # record the solution
             self._dst.take_screenshot(self._ret_regs, self._non_ret_regs, self._unknown_regs, {'ret_by_cex': ret_by_cex})
+
+            # Check for timeout
+            if self._timer.get_elapsed_time() > Config.DEFAULT_TIMEOUT:
+                self._logger.dump('Timeout: Solving time ({}s) is larger than {}s.'.format(self._timer.get_elapsed_time(), Config.DEFAULT_TIMEOUT))
+                self._logger.dump('Exitting...')
+                break
         
-        assert not self._unknown_regs
-        assert self._regs == (self._ret_regs | self._non_ret_regs)
+        #assert not self._unknown_regs
+        #assert self._regs == (self._ret_regs | self._non_ret_regs)
+
+        # report solving information
+        self._report_solving_info()
 
     
     def _gen_wrapper_sim(self, trace_info):
@@ -533,4 +564,44 @@ class Explorer(Checker):
         self._logger.dump('#unknown:       {}'.format(len(self._unknown_regs)))
         self._logger.dump('#retention:     {}'.format(len(self._ret_regs)))
         self._logger.dump('#non retention: {}'.format(len(self._non_ret_regs)))
+
+        self._timer.start_iteration()
+
+    def _report_solving_info(self):
+        """ Report the final result """
+
+        self._logger.fence()
+        self._logger.dump('Summary ({}):'.format(datetime.now()))
+        
+        def _get_bit_count(regs: set) -> int:
+            """ Get the total bit count of the registers """
+
+            return sum([int(self._regs_and_resets[reg].split("'")[0]) for reg in regs])
+        
+        reg_total = len(self._regs)
+        bit_total = _get_bit_count(self._regs)
+        
+        def _get_info(regs: set) -> list:
+            
+            reg_count = len(regs)
+            bit_count = _get_bit_count(regs)
+            
+            reg_percent = (float(reg_count) / reg_total) * 100
+            bit_percent = (float(bit_count) / bit_total) * 100
+            
+            return [reg_count, bit_count, reg_percent, bit_percent]
+        
+        ret_info = _get_info(self._ret_regs)
+        non_ret_info = _get_info(self._non_ret_regs)
+        unknown_info = _get_info(self._unknown_regs)
+        
+        self._logger.dump('#retention:     {}/{} ({}% / {}%)'.format(ret_info[0], ret_info[1], format(ret_info[2], '.2f'), format(ret_info[3], '.2f')))
+        self._logger.dump('#non retention: {}/{} ({}% / {}%)'.format(non_ret_info[0], non_ret_info[1], format(non_ret_info[2], '.2f'), format(non_ret_info[3], '.2f')))
+        self._logger.dump('#unknown:       {}/{} ({}% / {}%)'.format(unknown_info[0], unknown_info[1], format(unknown_info[2], '.2f'), format(unknown_info[3], '.2f')))
+        
+        self._logger.dump('Iterations: {}'.format(self._timer.get_iterations()))
+        self._logger.dump('Solving time: {}'.format(self._timer.get_elapsed_time()))
+        self._logger.dump('Average proof time: {}'.format(self._timer.get_avg_pf_time()))
+        self._logger.dump('Average CEX time:   {}'.format(self._timer.get_avg_cex_time()))
+    
     

@@ -460,7 +460,7 @@ class Setup(Checker):
             #'set_prove_per_property_time_limit 0s',
             #'set_prove_per_property_time_limit_factor 0',
             '',
-            'set_prove_time_limit {}s'.format(Config.DEFAULT_TIMEOUT),
+            'set_prove_time_limit {}s'.format(Config.DEFAULT_VERIF_TIMEOUT),
             ''
         ]
 

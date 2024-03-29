@@ -70,3 +70,40 @@ class IcarusSolver:
             assert res == 'proven'
             return False
     
+
+class SimulatorSolver:
+    """ Solver interface for a simulator """
+
+    def __init__(self, config, design_files, logger, workdir):
+        """ Constructor """
+
+        self._logger = logger
+        self._workdir = workdir
+
+        wrapper = os.path.join(self._workdir, 'wrapper_sim.sv')
+        design_test = os.path.join(self._workdir, 'design_test.v')
+        self._tb_files = design_files + [wrapper, design_test]
+        self._compiled_file = os.path.join(self._workdir, 'tb')
+
+        self._include_dirs = []
+        self._get_include_dirs(config['RTL'])
+
+    
+    def exec(self):
+        """ Compile and simulate the testbench"""
+        pass
+    
+    
+    def _get_include_dirs(self, rtl=[]):
+        """ Get the list of directories searched for Verilog include files """
+        
+        if not self._include_dirs:
+            for path in rtl:
+                if os.path.isdir(path):
+                    self._include_dirs.append(path)
+        
+        return self._include_dirs
+    
+    @staticmethod
+    def is_cex(msg: str) -> bool:
+        pass
