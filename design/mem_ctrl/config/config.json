@@ -3,7 +3,9 @@
     "top_module": "mc_top",
     "clock": "clk_i",
     "secondary_clocks": { "mc_clk_i": 2 },
-    "reset": "rst_i",
+    "resets": {
+        "rst_i": 1
+    },
     "reset_input_values": {
         "wb_stb_i": "1'b0",
         "wb_cyc_i": "1'b0",
