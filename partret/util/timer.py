@@ -48,23 +48,23 @@ class Timer():
             self._cex_rounds += 1
             self._cex_time_tot += res['time']
     
-    #def get_pf_rounds(self) -> int:
-    #    """ Get the number of rounds for proving """
-    #
-    #    return self._pf_rounds
-    #
-    #def get_cex_rounds(self) -> int:
-    #    """ Get the number of rounds for finding counterexamples """
-    #
-    #    return self._cex_rounds
+    def get_pf_rounds(self) -> int:
+        """ Get the number of rounds for proving """
+    
+        return self._pf_rounds
+    
+    def get_cex_rounds(self) -> int:
+        """ Get the number of rounds for finding counterexamples """
+    
+        return self._cex_rounds
     
     def get_avg_pf_time(self) -> float:
         """ Get the average time for proving """
 
-        return self._pf_time_tot / self._pf_rounds
+        return (self._pf_time_tot / self._pf_rounds) if (self._pf_rounds > 0) else 'N/A'
 
     def get_avg_cex_time(self) -> float:
         """ Get the average time for finding counterexamples """
 
-        return self._cex_time_tot / self._cex_rounds
+        return (self._cex_time_tot / self._cex_rounds) if (self._cex_rounds > 0) else 'N/A'
     

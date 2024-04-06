@@ -3,6 +3,7 @@
 # TODO: license
 
 from datetime import datetime
+import itertools
 import json
 import os
 import sys
@@ -204,6 +205,8 @@ class Explorer(Checker):
                 ret_by_cex += new_ret
                 self._ret_regs |= set(new_ret)
                 self._unknown_regs -= set(new_ret)
+
+                break
             else:
                 self._logger.dump('Error: Failed to prove property within {}s.'.format(Config.DEFAULT_VERIF_TIMEOUT))
                 self._logger.dump('The registers in the retention list are necessary but may not be sufficient.')
@@ -408,12 +411,17 @@ class Explorer(Checker):
         
         # initialize register batches if not already
         if self._reg_batches is None:
-            b_neighbor = [frozenset(self._get_regs_of_same_module(r, self._unknown_regs)) for r in self._unknown_regs]
+            #b_neighbor = [frozenset(self._get_regs_of_same_module(r, self._unknown_regs)) for r in self._unknown_regs]
+            b_neighbor = self._group_regs_of_same_instance(self._unknown_regs)
+
             b_friend = [frozenset(self._get_regs_with_similar_names(r, self._unknown_regs)) for r in self._unknown_regs]
+
+            b_same_suffix = [frozenset(self._get_regs_with_same_suffix(r, self._unknown_regs)) for r in self._unknown_regs]
+            
             b_copy = [frozenset(self._get_copied_regs(r, self._unknown_regs)) for r in self._unknown_regs]
             b_raw = [frozenset([r]) for r in self._unknown_regs]
 
-            b_all = set(b_neighbor) | set(b_friend) | set(b_copy) | set(b_raw)
+            b_all = set(b_neighbor) | set(b_friend) | set(b_same_suffix) | set(b_copy) | set(b_raw)
         
             self._reg_batches = [set(fs) for fs in b_all]
 
@@ -510,6 +518,28 @@ class Explorer(Checker):
         ]
         return neighbors
     
+    def _group_regs_of_same_instance(self, pool, length=0):
+        """ Group registers that are in the same instance """
+        
+        root_inst = []
+        other_insts = {}
+
+        for reg in pool:
+            if reg.count('.') == length:
+                root_inst.append(reg)
+            else:
+                inst_of_reg = reg.split('.')[length]
+                if inst_of_reg not in other_insts:
+                    other_insts[inst_of_reg] = [reg]
+                else:
+                    other_insts[inst_of_reg].append(reg)
+
+        if not other_insts:
+            return []
+        else:
+            return [frozenset(root_inst)] + [frozenset(grp) for grp in other_insts.values()] \
+                + list(itertools.chain.from_iterable([self._group_regs_of_same_instance(grp, length + 1) for grp in other_insts.values()]))
+    
     def _get_regs_with_similar_names(self, target, pool):
         """ Get the regs that have similar names as the target """
 
@@ -517,14 +547,27 @@ class Explorer(Checker):
             """ Differ only in digits """
 
             def _remove_digits(in_str):
-                return ''.join([c for c in in_str if not c.isdigit()])
+                #return ''.join([c for c in in_str if not (c.isdigit())])
+                return ''.join([c for c in in_str if not (c.isdigit() or c == '_')])
 
             return _remove_digits(a) == _remove_digits(b)
 
         def _diff_in_suffix(a, b):
             """ Differ only in the last suffix """
 
-            return (a.split('_')[:-1] == b.split('_')[:-1]) if '_' in a else False
+            #return (a.split('_')[:-1] == b.split('_')[:-1]) if '_' in a else False
+
+            a_parts = a.split('_')
+            b_parts = b.split('_')
+
+            if len(a_parts) < len(b_parts):
+                return a_parts == b_parts[:len(a_parts)]
+            #elif len(a_parts) > len(b_parts):
+            #    return a_parts[:len(b_parts)] == b_parts
+            elif len(a_parts) == len(b_parts) and len(a_parts) > 1:
+                return a_parts[:-1] == b_parts[:-1]
+            else:
+                return False
 
         def _is_similar(a, b):
             """ Compare tails of two paths """
@@ -536,6 +579,17 @@ class Explorer(Checker):
                 tail_a, tail_b) or _diff_in_suffix(tail_a, tail_b)
 
         return [reg for reg in pool if _is_similar(target, reg)]
+    
+    def _get_regs_with_same_suffix(self, target, pool):
+        """ Get the regs that have the same suffix as the target """
+
+        def _is_same_suffix(a, b):
+            """ Compare two paths to check if is of a same suffix """
+
+            # same length and only diff at the tail
+            return a.split('_')[0] == b.split('_')[0]
+        
+        return [reg for reg in pool if _is_same_suffix(target.split('.')[-1], reg.split('.')[-1])]
     
     def _get_copied_regs(self, target, pool):
         """ Get the copied regs (1-diff in the prefix) """
@@ -603,6 +657,7 @@ class Explorer(Checker):
         self._logger.dump('#unknown:       {}/{} ({}% / {}%)'.format(unknown_info[0], unknown_info[1], format(unknown_info[2], '.2f'), format(unknown_info[3], '.2f')))
         
         self._logger.dump('Iterations: {}'.format(self._timer.get_iterations()))
+        self._logger.dump('  Proven: {}, CEX: {}'.format(self._timer.get_pf_rounds(), self._timer.get_cex_rounds()))
         self._logger.dump('Solving time: {}'.format(self._timer.get_elapsed_time()))
         self._logger.dump('Average proof time: {}'.format(self._timer.get_avg_pf_time()))
         self._logger.dump('Average CEX time:   {}'.format(self._timer.get_avg_cex_time()))

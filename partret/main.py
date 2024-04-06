@@ -63,7 +63,7 @@ def main():
     #config['cpsrc'] = args.src
     #config['cpdst'] = args.dst
 
-    start_time = time.time()
+    #start_time = time.time()
     
     # set up
     if args.setup:
@@ -80,9 +80,8 @@ def main():
         else:
             logger.dump('Error: unknown exploration method {}'.format(args.explore))
     
-    end_time = time.time()
-
-    logger.dump('Execution time: {:.2f} seconds'.format(end_time - start_time))
+    #end_time = time.time()
+    #logger.dump('Execution time: {:.2f} seconds'.format(end_time - start_time))
 
 
 if __name__ == '__main__':

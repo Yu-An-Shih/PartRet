@@ -95,11 +95,13 @@ class VCSSolver(SimulatorSolver):
         super().__init__(config, design_files, logger, workdir)
     
     def exec(self):
-        """ Compile and simulate the testbench"""
+        """ Compile and simulate the testbench """
 
         #vcs_alias = '/usr/licensed/bin/run7 /usr/licensed/synopsys/vcs-mx/O-2018.09-SP2/bin/vcs'
         compile_cmd = ['/usr/licensed/bin/run7', '/usr/licensed/synopsys/vcs-mx/O-2018.09-SP2/bin/vcs', '-full64 -sverilog +v2k +notimingcheck', '-Mdir={}'.format(os.path.join(self._workdir, 'csrc')), '-o', self._compiled_file] + self._tb_files
-        
+        #compile_cmd = ['/usr/licensed/bin/run7', '/usr/licensed/synopsys/vcs-mx/O-2018.09-SP2/bin/vcs', '-full64 -sverilog +v2k +notimingcheck +delay_mode_zero', '-Mdir={}'.format(os.path.join(self._workdir, 'csrc')), '-o', self._compiled_file] + self._tb_files
+        #compile_cmd = ['/usr/licensed/bin/run7', '/usr/licensed/synopsys/vcs-mx/O-2018.09-SP2/bin/vcs', '-full64 -sverilog +v2k +notimingcheck', '-noIncrComp', '-o', self._compiled_file] + self._tb_files
+
         if self._include_dirs:
             compile_cmd += ['+incdir+' + '+'.join(self._include_dirs)]
         
