@@ -2,7 +2,9 @@
     "RTL": [ "design/spi/rtl/" ],
     "top_module": "spi_qchannel",
     "clock": "wb_clk_i",
-    "reset": "wb_rst_i",
+    "resets": {
+        "wb_rst_i": 1
+    },
     "reset_input_values": {
         "qreqn": "1'b1"
     },
