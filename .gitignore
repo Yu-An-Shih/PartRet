@@ -7,28 +7,26 @@ jgproject*/
 
 # Design directories
 design/aquarius/
-design/old_spi/
-design/old_mem_ctrl/
-design/old_wb_dma/
+
 design/spi/*
 !design/spi/config/
 !design/spi/rtl/
+
 design/mem_ctrl/*
 !design/mem_ctrl/config/
 !design/mem_ctrl/rtl/
-design/wb_dma/*
-!design/wb_dma/config/
-!design/wb_dma/rtl/
+
 design/picorv32/*
 !design/picorv32/config/
 !design/picorv32/rtl/
-design/nvdla/*
-design/nvdla_cmac/*
-!design/nvdla_cmac/config/
-!design/nvdla_cmac/rtl/
-design/nvdla_cmac_simplified/*
-!design/nvdla_cmac_simplified/config/
-!design/nvdla_cmac_simplified/rtl/
+
+design/wb_dma/*
+!design/wb_dma/config/
+!design/wb_dma/rtl/
+
+design/nvdla*/*
+!design/nvdla*/config/
+!design/nvdla*/rtl/
 
 # Log files
 *.log
