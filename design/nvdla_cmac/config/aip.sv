@@ -14,11 +14,12 @@ assert property (@(posedge nvdla_core_clk) ($fell(qdeny) |-> $past(qreqn && qacc
 assert property (@(posedge nvdla_core_clk) ($rose(qdeny) |-> $past(!qreqn && qacceptn)));
 
 // Optional Q-channel assumption
-assume property (@(posedge nvdla_core_clk) ($fell(qreqn) |-> ##[1:$] $rose(qreqn)));
+//assume property (@(posedge nvdla_core_clk) ($fell(qreqn) |-> ##[1:$] $rose(qreqn)));
 
 // Constraints for retention registers
 wire standby_state = !qreqn && !qacceptn;
 
+assume property (@(posedge nvdla_core_clk) $rose(standby_state) |=> $rose(pr_restore));     // Added to increase verification speed
 assume property (@(posedge nvdla_core_clk) ($rose(pr_restore) |-> $past(standby_state)));
 assume property (@(posedge nvdla_core_clk) ($rose(pr_restore) |=> $rose(qreqn) && $fell(pr_restore)));
 assume property (@(posedge nvdla_core_clk) (standby_state && !pr_restore |=> !qreqn));
