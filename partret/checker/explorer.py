@@ -243,7 +243,8 @@ class Explorer(Checker):
             with open(self._retention_checker, 'r') as fr:
                 ret_checker = [ line.strip('\n') for line in fr.readlines() ]
             
-            ret_checker += self._gen_trace_info_getter_2(target_regs)
+            if len(target_regs) > 1:
+                ret_checker += self._gen_trace_info_getter_2(target_regs)
             ret_checker += ['exit']
 
             # generate partial retention design
@@ -273,7 +274,7 @@ class Explorer(Checker):
 
                     # create simulation testbench
                     self._gen_wrapper_sim_2([check_cond_vals, input_vals]) # TODO: allow customized assertions
-
+                    
                     ret_candids = self._solver.get_retention_candidates(out_msg)
                     assert len(ret_candids) > 0
 
@@ -283,20 +284,23 @@ class Explorer(Checker):
                         self._logger.dump('\n'.join(ret_candids))
                     
                     new_ret = []
-                    while len(ret_candids) > 0:
-                        candid = ret_candids.pop()
+                    if len(ret_candids) == 1:
+                        new_ret.append(ret_candids.pop())
+                    else:
+                        while len(ret_candids) > 0:
+                            candid = ret_candids.pop()
 
-                        # generate partial retention design
-                        # TODO: for simulation, create a large power-collapsible design instead?
-                        r_noret = self._non_ret_regs | (target_regs - set(new_ret + ret_candids))
-                        self._gen_partret_design(r_noret)
+                            # generate partial retention design
+                            # TODO: for simulation, create a large power-collapsible design instead?
+                            r_noret = self._non_ret_regs | (target_regs - set(new_ret + ret_candids))
+                            self._gen_partret_design(r_noret)
 
-                        # simulate
-                        sim_msg = self._simulator.exec()
-                        
-                        # extend retention list
-                        if IcarusSolver.is_cex(sim_msg):
-                            new_ret.append(candid)
+                            # simulate
+                            sim_msg = self._simulator.exec()
+                            
+                            # extend retention list
+                            if IcarusSolver.is_cex(sim_msg):
+                                new_ret.append(candid)
 
                     assert len(new_ret) > 0
                     
@@ -555,12 +559,27 @@ class Explorer(Checker):
             for input in input_vals:
                 cycle.append('{} = {};'.format(input, input_vals[input][i]))
             
+            #cycle += [
+            #    '',
+            #    '@(negedge {});'.format(self._clock),
+            #    #'$display("cycle {}");'.format(i+1),
+            #    #'if ({}) begin'.format( pow_out_diff if (check_cond_vals[i] == '1\'b0') else out_diff ),
+            #    #'if ({}) begin'.format( out_diff ),
+            #    'if (!({})) begin'.format(self._func_equiv),
+            #    '    $display("cex");',
+            #    #'    $display("cex{}");'.format(i+1),
+            #    '    $finish;',
+            #    'end',
+            #    '',
+            #    '@(posedge {});'.format(self._clock),
+            #    ''
+            #]
+
             cycle += [
                 '',
                 '@(negedge {});'.format(self._clock),
                 #'$display("cycle {}");'.format(i+1),
-                'if ({}) begin'.format( pow_out_diff if (check_cond_vals[i] == '1\'b0') else out_diff ),
-                #'if ({}) begin'.format( out_diff ),
+                'if (!({})) begin'.format(self._func_equiv) if self._func_equiv else 'if ({}) begin'.format( pow_out_diff if (check_cond_vals[i] == '1\'b0') else out_diff ),
                 '    $display("cex");',
                 #'    $display("cex{}");'.format(i+1),
                 '    $finish;',

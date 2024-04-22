@@ -46,6 +46,8 @@ class Checker:
         self._power_outputs = []
         self._non_power_outputs = []
 
+        self._func_equiv = ""
+
         self._regs_and_resets = {}
 
         self._regs = set()
@@ -68,7 +70,7 @@ class Checker:
         assert isinstance(config['RTL'], list)
         self._get_design_files(config['RTL'])
 
-        # clock
+        # clocks
         assert isinstance(config['clock'], str)
         self._clock = config['clock']
 
@@ -76,10 +78,7 @@ class Checker:
             assert isinstance(config['secondary_clocks'], dict)
             self._secondary_clocks = config['secondary_clocks']
 
-        # reset
-        #assert isinstance(config['reset'], str)
-        #self._reset = config['reset']
-
+        # resets
         assert isinstance(config['resets'], dict)
         self._resets = config['resets']
 
@@ -120,6 +119,11 @@ class Checker:
         self._power_outputs = config['power_interface_outputs']
         self._non_power_outputs = list(set(design_info['output_list'].keys()) - set(self._power_outputs))
 
+        # functional equivalence (for retention checking)
+        if 'equivalence' in config:
+            assert isinstance(config['equivalence'], str)
+            self._func_equiv = config['equivalence']
+        
         # self._regs, self._ret_regs, self._non_ret_regs
         self._regs_and_resets = design_info['reset_values']
         self._regs = set(self._regs_and_resets.keys())
