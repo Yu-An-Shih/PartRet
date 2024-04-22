@@ -26,6 +26,8 @@ def main():
                         help='set up files and scripts required for the partial retention check')
     parser.add_argument('--explore', type=str, default='',
                         help='explore (minimize/complete) the retention register list')
+    parser.add_argument('--optimize', type=str, default='combine',
+                        help='optimize the retention register list')
 
     # optional arguments
     #parser.add_argument('--src', type=str, default='',
@@ -79,6 +81,12 @@ def main():
             explorer.complete_retention_list()
         else:
             logger.dump('Error: unknown exploration method {}'.format(args.explore))
+    
+    if args.optimize:
+        explorer = Explorer(config, logger, args.work, args.verbosity)
+
+        if args.optimize == 'combine':
+            explorer.optimize_retention_list()
     
     #end_time = time.time()
     #logger.dump('Execution time: {:.2f} seconds'.format(end_time - start_time))
