@@ -124,27 +124,29 @@ class Checker:
             assert isinstance(config['equivalence'], str)
             self._func_equiv = config['equivalence']
         
-        # self._regs, self._ret_regs, self._non_ret_regs
+        # self._regs, self._ret_regs, self._non_ret_regs, self._unknown_regs
         self._regs_and_resets = design_info['reset_values']
         self._regs = set(self._regs_and_resets.keys())
 
-        assert os.path.isfile(config['src'])
-        with open(config['src'], 'r') as f:
-            src = json.load(f)
-
-        def get_regs(reg_list: list) -> set:
-            if reg_list == ['.']:
-                regs = set(self._regs)
-            else:
-                regs = set(reg_list)
-            return regs
+        self._init_reg_subsets(config['src'])
         
-        assert isinstance(src['retention'], list) & isinstance(src['non_retention'], list) & isinstance(src['unknown'], list)
-        self._ret_regs = get_regs(src['retention'])
-        self._non_ret_regs = get_regs(src['non_retention'])
-        self._unknown_regs = get_regs(src['unknown'])
+        #assert os.path.isfile(config['src'])
+        #with open(config['src'], 'r') as f:
+        #    src = json.load(f)
+#
+        #def get_regs(reg_list: list) -> set:
+        #    if reg_list == ['.']:
+        #        regs = set(self._regs)
+        #    else:
+        #        regs = set(reg_list)
+        #    return regs
+        #
+        #assert isinstance(src['retention'], list) & isinstance(src['non_retention'], list) & isinstance(src['unknown'], list)
+        #self._ret_regs = get_regs(src['retention'])
+        #self._non_ret_regs = get_regs(src['non_retention'])
+        #self._unknown_regs = get_regs(src['unknown'])
 
-        self._check_reg_subsets()
+        #self._check_reg_subsets()
 
         # non-resettable registers
         if 'non_resettable_regs' in config:
@@ -247,6 +249,39 @@ class Checker:
         # Results in error if the tool isn't set up properly
         self._logger.dump('Error: design_info.json does not exist in the config directory!!!')
         sys.exit(0)
+    
+    def _init_reg_subsets(self, src_file: str):
+        """ Initialize the retention, non-retention, and unknown register sets """
+
+        assert os.path.isfile(src_file)
+        with open(src_file, 'r') as f:
+            src = json.load(f)
+
+        def get_regs(reg_list: list) -> set:
+            if reg_list == ['.']:
+                regs = set(self._regs)
+            elif reg_list == ['..']:
+                regs = set()
+            else:
+                regs = set(reg_list)
+            return regs
+        
+        assert isinstance(src['retention'], list) & isinstance(src['non_retention'], list) & isinstance(src['unknown'], list)
+        self._ret_regs = get_regs(src['retention'])
+        self._non_ret_regs = get_regs(src['non_retention'])
+        self._unknown_regs = get_regs(src['unknown'])
+
+        if src['retention'] == ['..']:
+            assert src['non_retention'] != ['..'] and src['unknown'] != ['..']
+            self._ret_regs = self._regs - self._non_ret_regs - self._unknown_regs
+        elif src['non_retention'] == ['..']:
+            assert src['unknown'] != ['..']
+            self._non_ret_regs = self._regs - self._ret_regs - self._unknown_regs
+        elif src['unknown'] == ['..']:
+            self._unknown_regs = self._regs - self._ret_regs - self._non_ret_regs
+        
+        self._check_reg_subsets()
+    
     
     def _check_reg_subsets(self):
         """ Check if the retention, non-retention, and unknown register sets are set up properly """
