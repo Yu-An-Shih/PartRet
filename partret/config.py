@@ -21,7 +21,7 @@ class Config:
     # Default timeout for each query
     # - JasperGold
     #   - set_prove_time_limit {}s
-    DEFAULT_VERIF_TIMEOUT = 86400
+    DEFAULT_VERIF_TIMEOUT = 1800
 
     # Default timeout for the algorithm (seconds)
     DEFAULT_TIMEOUT = 86400

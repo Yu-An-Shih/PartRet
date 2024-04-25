@@ -227,11 +227,52 @@ class Explorer(Checker):
         self._report_solving_info()
 
     
+    def _find_regs_to_remove_cex(self, target_regs: set, result_msg: str) -> list:
+        """ Find the retention registers required to remove the counterexample """
+
+        # create simulation testbench
+        self._gen_wrapper_sim_2(result_msg)
+
+        # Get the candidate retention registers
+        ret_candids = self._solver.get_retention_candidates(result_msg)
+        assert len(ret_candids) > 0
+        
+        if self._verbosity > 0:
+            self._logger.dump('Retention candidates:')
+            self._logger.dump('\n'.join(ret_candids))
+        
+        new_ret = []
+        if len(ret_candids) == 1:
+            new_ret.append(ret_candids.pop())
+        else:
+            while len(ret_candids) > 0:
+                candid = ret_candids.pop()
+
+                # generate partial retention design
+                # TODO: for simulation, create a large power-collapsible design instead?
+                r_noret = self._non_ret_regs | (target_regs - set(new_ret + ret_candids))
+                self._gen_partret_design(r_noret)
+
+                # simulate
+                sim_msg = self._simulator.exec()
+                
+                # extend retention list
+                if IcarusSolver.is_cex(sim_msg):
+                    new_ret.append(candid)
+
+        assert len(new_ret) > 0
+
+        self._logger.dump('Registers added to retention list:')
+        self._logger.dump('\n'.join(new_ret))
+
+        return new_ret
+
+    
     def optimize_retention_list(self):
         """ Analyze the registers in self._unknown_regs and put them into self._ret_regs/self._non_ret_regs """
         """ Algorithm: set exploration combined with CEX-guided approach """
         ### Recommended use case: minimize the number of retention registers from a complete retention list ###
-
+        
         target_regs = self._get_target_regs()
         while target_regs:
             # record current progress
@@ -268,54 +309,24 @@ class Explorer(Checker):
                 if len(target_regs) == 1:
                     self._ret_regs |= target_regs
                 else:
-                    # extract cex trace info
-                    input_vals = self._solver.extract_cex_trace_info(out_msg, list(self._input_width_list.keys()) + ['pr_restore'])
-                    check_cond_vals = self._solver.extract_cex_trace_info(out_msg, ['check_cond'])['check_cond']
-
-                    # create simulation testbench
-                    self._gen_wrapper_sim_2([check_cond_vals, input_vals]) # TODO: allow customized assertions
-                    
-                    ret_candids = self._solver.get_retention_candidates(out_msg)
-                    assert len(ret_candids) > 0
-
-                    # Print the candidate retention registers
-                    if self._verbosity > 0:
-                        self._logger.dump('Retention candidates:')
-                        self._logger.dump('\n'.join(ret_candids))
-                    
-                    new_ret = []
-                    if len(ret_candids) == 1:
-                        new_ret.append(ret_candids.pop())
-                    else:
-                        while len(ret_candids) > 0:
-                            candid = ret_candids.pop()
-
-                            # generate partial retention design
-                            # TODO: for simulation, create a large power-collapsible design instead?
-                            r_noret = self._non_ret_regs | (target_regs - set(new_ret + ret_candids))
-                            self._gen_partret_design(r_noret)
-
-                            # simulate
-                            sim_msg = self._simulator.exec()
-                            
-                            # extend retention list
-                            if IcarusSolver.is_cex(sim_msg):
-                                new_ret.append(candid)
-
-                    assert len(new_ret) > 0
-                    
-                    self._logger.dump('Registers added to retention list:')
-                    self._logger.dump('\n'.join(new_ret))
-
+                    new_ret = self._find_regs_to_remove_cex(target_regs, out_msg)
                     self._ret_regs |= set(new_ret)
             else:
-                self._logger.dump('Error: Failed to prove property within {}s.'.format(Config.DEFAULT_VERIF_TIMEOUT))
-                self._logger.dump('The registers in the retention list are sufficient but may not be necessary.')
-                self._logger.dump('Exitting...')
-                break
+                #self._logger.dump('Error: Failed to prove property within {}s.'.format(Config.DEFAULT_VERIF_TIMEOUT))
+                #self._logger.dump('The registers in the retention list are sufficient but may not be necessary.')
+                #self._logger.dump('Exitting...')
+                #break
+
+                self._logger.dump('Warning: Failed to prove property within {}s.'.format(Config.DEFAULT_VERIF_TIMEOUT))
+                self._logger.dump('Giving up current iteration...')
             
             self._unknown_regs -= (self._ret_regs | self._non_ret_regs)
-            target_regs = self._get_target_regs()
+            
+            if self._timer.get_iterations() % 10 == 0:
+                self._logger.dump('Re-initializing register batches...')
+                target_regs = self._get_target_regs(init=True)
+            else:
+                target_regs = self._get_target_regs()
 
             # record the current solution
             self._dst.take_screenshot(self._ret_regs, self._non_ret_regs, self._unknown_regs)
@@ -333,7 +344,7 @@ class Explorer(Checker):
         self._report_solving_info()
 
     
-    def _gen_wrapper_sim_2(self, trace_info):
+    def _gen_wrapper_sim_2(self, result_msg: str):
         """ Wrap up the original and power-collapsible designs (for simulation) """
         
         # Target content
@@ -402,7 +413,7 @@ class Explorer(Checker):
         lines += assignment_list + ['']
         lines += golden_inst +  [''] + test_inst + ['']
 
-        lines += ['// Simulation testbench', ''] + self._gen_testbench_2(trace_info) + ['']
+        lines += ['// Simulation testbench', ''] + self._gen_testbench_2(result_msg) + ['']
 
         lines += ['endmodule']
 
@@ -496,15 +507,18 @@ class Explorer(Checker):
             print('\n'.join(lines), file=fw)
 
     
-    def _gen_testbench_2(self, trace_info: list) -> list:
+    def _gen_testbench_2(self, result_msg: str) -> list:
         """ Create simulation testbench based on the counterexample trace """
 
-        check_cond_vals = trace_info[0]
-        input_vals = trace_info[1]
+        # extract cex trace info
+        input_vals = self._solver.extract_cex_trace_info(result_msg, list(self._input_width_list.keys()) + ['pr_restore'])
 
+        # extract functional equivalence property
+        func_equiv = self._solver.extract_func_equiv_property(result_msg)
+        
         # Debug
-        #self._logger.dump('check_cond_vals: {}'.format(check_cond_vals))
         #self._logger.dump('input_vals: {}'.format(input_vals))
+        #self._logger.dump('func_equiv: {}'.format(func_equiv))
         
         clk_progress = [ 'always #5 {} = ~{};'.format(self._clock, self._clock) ]
 
@@ -535,11 +549,8 @@ class Explorer(Checker):
             #'{} = 1\'b0;'.format(self._reset),
             ''
         ]
-
-        out_diff = ' | '.join(['({} != {}_test)'.format(out, out) for out in self._output_width_list.keys()])
-        pow_out_diff = ' | '.join(['({} != {}_test)'.format(out, out) for out in self._power_outputs])
         
-        trace_len = len(check_cond_vals)
+        trace_len = len(input_vals['pr_restore'])
         for i in range(trace_len):
             cycle = [
                 '// Cycle {}'.format(i+1),
@@ -558,28 +569,12 @@ class Explorer(Checker):
             
             for input in input_vals:
                 cycle.append('{} = {};'.format(input, input_vals[input][i]))
-            
-            #cycle += [
-            #    '',
-            #    '@(negedge {});'.format(self._clock),
-            #    #'$display("cycle {}");'.format(i+1),
-            #    #'if ({}) begin'.format( pow_out_diff if (check_cond_vals[i] == '1\'b0') else out_diff ),
-            #    #'if ({}) begin'.format( out_diff ),
-            #    'if (!({})) begin'.format(self._func_equiv),
-            #    '    $display("cex");',
-            #    #'    $display("cex{}");'.format(i+1),
-            #    '    $finish;',
-            #    'end',
-            #    '',
-            #    '@(posedge {});'.format(self._clock),
-            #    ''
-            #]
 
             cycle += [
                 '',
                 '@(negedge {});'.format(self._clock),
                 #'$display("cycle {}");'.format(i+1),
-                'if (!({})) begin'.format(self._func_equiv) if self._func_equiv else 'if ({}) begin'.format( pow_out_diff if (check_cond_vals[i] == '1\'b0') else out_diff ),
+                'if (!({})) begin'.format(func_equiv),
                 '    $display("cex");',
                 #'    $display("cex{}");'.format(i+1),
                 '    $finish;',
@@ -692,11 +687,11 @@ class Explorer(Checker):
         return clk_progress + trace
     
     
-    def _get_target_regs(self):
+    def _get_target_regs(self, init=False):
         """ Returns a batch (set) of target registers for the next retention check """
         
         # initialize register batches if not already
-        if self._reg_batches is None:
+        if self._reg_batches is None or init:
             #b_neighbor = [frozenset(self._get_regs_of_same_module(r, self._unknown_regs)) for r in self._unknown_regs]
             b_neighbor = self._group_regs_of_same_instance(self._unknown_regs)
 

@@ -138,6 +138,38 @@ class JasperSolver:
         
         return trace_info
     
+    def extract_func_equiv_property(self, out_msg: str) -> str:
+        """ Extract the function equivalence property (assertion) """
+
+        # helper - extract assertion info
+        def _extract_info(property):
+            ##############################
+            # Example:
+            #   [<embedded>] % assert -name output_equiv { @(posedge clk)
+            #       (qacceptn == qacceptn_test) &&
+            #       (qdeny == qdeny_test) &&
+            #       ...
+            #   }
+            #   output_equiv
+            #   [<embedded>] % ...
+            ##############################
+            
+            try:
+                summary = out_msg.split('[<embedded>] % assert -name {}'.format(property))[1]
+            except BaseException:
+                self._logger.dump('Error: property {} not found in proof script'.format(property))
+                sys.exit(0)
+            
+            prefix = '\n'
+            suffix = '\n}'
+            
+            info_str = prefix.join(summary.split(prefix)[1:])
+            info_str = info_str.split(suffix)[0]
+            info_str = info_str.strip()
+
+            return info_str
+        
+        return _extract_info('output_equiv')
 
     def get_retention_candidates(self, out_msg: str) -> list:
         """ Extract the candidate retention registers from the CEX output message """
