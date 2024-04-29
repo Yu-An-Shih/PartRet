@@ -44,7 +44,7 @@ class Explorer(Checker):
         self._timer = Timer(logger)
     
 
-    def minimize_retention_list(self):
+    def retention_set_exploration(self):
         """ Analyze the registers in self._unknown_regs and put them into self._ret_regs/self._non_ret_regs """
         ### Recommended use case: minimize the number of retention registers from a complete retention list ###
 
@@ -61,11 +61,8 @@ class Explorer(Checker):
             self._logger.dump('Check registers:')
             self._logger.dump('\n'.join(target_regs))
 
-            #r_toret = self._ret_regs | (self._unknown_regs - target_regs)
-            r_noret = self._non_ret_regs | target_regs
-
             # generate partial retention design
-            self._gen_partret_design(r_noret)
+            self._gen_partret_design(self._non_ret_regs | target_regs)
 
             # launch Jasper
             out_msg = self._solver._exec_jg(ret_checker)
@@ -84,10 +81,13 @@ class Explorer(Checker):
                 if len(target_regs) == 1:
                     self._ret_regs |= target_regs
             else:
-                self._logger.dump('Error: Failed to prove property within {}s.'.format(Config.DEFAULT_VERIF_TIMEOUT))
-                self._logger.dump('The registers in the retention list are sufficient but may not be necessary.')
-                self._logger.dump('Exitting...')
-                break
+                #self._logger.dump('Error: Failed to prove property within {}s.'.format(Config.DEFAULT_VERIF_TIMEOUT))
+                #self._logger.dump('The registers in the retention list are sufficient but may not be necessary.')
+                #self._logger.dump('Exitting...')
+                #break
+
+                self._logger.dump('Warning: Failed to prove property within {}s.'.format(Config.DEFAULT_VERIF_TIMEOUT))
+                self._logger.dump('Giving up current iteration...')
             
             self._unknown_regs -= (self._ret_regs | self._non_ret_regs)
             target_regs = self._get_target_regs()
@@ -108,8 +108,8 @@ class Explorer(Checker):
         self._report_solving_info()
 
     
-    def complete_retention_list(self):
-        """ Expand an incomplete retention list to include all necessary retention registers """
+    """def complete_retention_list(self):
+        ### Expand an incomplete retention list to include all necessary retention registers ###
         
         # create proof script for Jasper
         with open(self._retention_checker, 'r') as fr:
@@ -224,50 +224,67 @@ class Explorer(Checker):
         #assert self._regs == (self._ret_regs | self._non_ret_regs)
 
         # report solving information
+        self._report_solving_info()"""
+
+    
+    def cex_guided_retention_search(self):
+        """ Repeatedly identify necessary retention registers based on counterexamples until the retention set is complete """
+
+        while len(self._unknown_regs) > 0:
+            # record current progress
+            self._report_current_progress()
+
+            # create proof script for Jasper
+            with open(self._retention_checker, 'r') as fr:
+                ret_checker = [ line.strip('\n') for line in fr.readlines() ]
+            
+            ret_checker += self._gen_trace_info_getter_2(self._unknown_regs)
+            ret_checker += ['exit']
+
+            # generate partial retention design
+            self._gen_partret_design(self._non_ret_regs | self._unknown_regs)
+
+            # launch Jasper
+            out_msg = self._solver._exec_jg(ret_checker)
+
+            # parse Jasper output
+            res = self._solver._parse_jg_result(out_msg)
+            self._logger.dump(res)
+
+            # update timing information
+            self._timer.update_time(res['output_equiv'])
+
+            if JasperSolver.is_proven(res):
+                # all unknown registers can be safely non-retained
+                self._non_ret_regs |= self._unknown_regs
+                self._unknown_regs = set()
+            elif JasperSolver.is_cex(res):
+                new_ret = self._find_regs_to_remove_cex(self._unknown_regs, out_msg)
+                
+                self._ret_regs |= set(new_ret)
+                self._unknown_regs -= set(new_ret)
+            else:
+                self._logger.dump('Error: Failed to prove property within {}s.'.format(Config.DEFAULT_VERIF_TIMEOUT))
+                self._logger.dump('The registers in the retention list are necessary but may not be sufficient.')
+                self._logger.dump('Exitting...')
+                break
+
+            # record the solution
+            self._dst.take_screenshot(self._ret_regs, self._non_ret_regs, self._unknown_regs)
+
+            # Check for timeout
+            if self._timer.get_elapsed_time() > Config.DEFAULT_TIMEOUT:
+                self._logger.dump('Timeout: Solving time ({}s) is larger than {}s.'.format(self._timer.get_elapsed_time(), Config.DEFAULT_TIMEOUT))
+                self._logger.dump('Exitting...')
+                break
+        
+        #assert not self._unknown_regs
+        #assert self._regs == (self._ret_regs | self._non_ret_regs)
+
+        # report solving information
         self._report_solving_info()
 
-    
-    def _find_regs_to_remove_cex(self, target_regs: set, result_msg: str) -> list:
-        """ Find the retention registers required to remove the counterexample """
 
-        # create simulation testbench
-        self._gen_wrapper_sim_2(result_msg)
-
-        # Get the candidate retention registers
-        ret_candids = self._solver.get_retention_candidates(result_msg)
-        assert len(ret_candids) > 0
-        
-        if self._verbosity > 0:
-            self._logger.dump('Retention candidates:')
-            self._logger.dump('\n'.join(ret_candids))
-        
-        new_ret = []
-        if len(ret_candids) == 1:
-            new_ret.append(ret_candids.pop())
-        else:
-            while len(ret_candids) > 0:
-                candid = ret_candids.pop()
-
-                # generate partial retention design
-                # TODO: for simulation, create a large power-collapsible design instead?
-                r_noret = self._non_ret_regs | (target_regs - set(new_ret + ret_candids))
-                self._gen_partret_design(r_noret)
-
-                # simulate
-                sim_msg = self._simulator.exec()
-                
-                # extend retention list
-                if IcarusSolver.is_cex(sim_msg):
-                    new_ret.append(candid)
-
-        assert len(new_ret) > 0
-
-        self._logger.dump('Registers added to retention list:')
-        self._logger.dump('\n'.join(new_ret))
-
-        return new_ret
-
-    
     def optimize_retention_list(self):
         """ Analyze the registers in self._unknown_regs and put them into self._ret_regs/self._non_ret_regs """
         """ Algorithm: set exploration combined with CEX-guided approach """
@@ -289,8 +306,7 @@ class Explorer(Checker):
             ret_checker += ['exit']
 
             # generate partial retention design
-            r_noret = self._non_ret_regs | target_regs
-            self._gen_partret_design(r_noret)
+            self._gen_partret_design(self._non_ret_regs | target_regs)
 
             # launch Jasper
             out_msg = self._solver._exec_jg(ret_checker)
@@ -343,6 +359,47 @@ class Explorer(Checker):
         # report solving information
         self._report_solving_info()
 
+    
+    def _find_regs_to_remove_cex(self, target_regs: set, result_msg: str) -> list:
+        """ Find the retention registers required to remove the counterexample """
+
+        # create simulation testbench
+        self._gen_wrapper_sim_2(result_msg)
+
+        # Get the candidate retention registers
+        ret_candids = self._solver.get_retention_candidates(result_msg)
+        assert len(ret_candids) > 0
+        
+        if self._verbosity > 0:
+            self._logger.dump('Retention candidates:')
+            self._logger.dump('\n'.join(ret_candids))
+        
+        new_ret = []
+        if len(ret_candids) == 1:
+            new_ret.append(ret_candids.pop())
+        else:
+            while len(ret_candids) > 0:
+                candid = ret_candids.pop()
+
+                # generate partial retention design
+                # TODO: for simulation, create a large power-collapsible design instead?
+                r_noret = self._non_ret_regs | (target_regs - set(new_ret + ret_candids))
+                self._gen_partret_design(r_noret)
+
+                # simulate
+                sim_msg = self._simulator.exec()
+                
+                # extend retention list
+                if IcarusSolver.is_cex(sim_msg):
+                    new_ret.append(candid)
+
+        assert len(new_ret) > 0
+
+        self._logger.dump('Registers added to retention list:')
+        self._logger.dump('\n'.join(new_ret))
+
+        return new_ret
+    
     
     def _gen_wrapper_sim_2(self, result_msg: str):
         """ Wrap up the original and power-collapsible designs (for simulation) """
@@ -420,8 +477,8 @@ class Explorer(Checker):
         with open(wrapper, 'w') as fw:
             print('\n'.join(lines), file=fw)
     
-    def _gen_wrapper_sim(self, trace_info):
-        """ Wrap up the original and power-collapsible designs (for simulation) """
+    """def _gen_wrapper_sim(self, trace_info):
+        ### Wrap up the original and power-collapsible designs (for simulation) ###
         
         # Target content
         # - wrapper_sim.sv
@@ -504,7 +561,7 @@ class Explorer(Checker):
         lines += ['endmodule']
 
         with open(wrapper, 'w') as fw:
-            print('\n'.join(lines), file=fw)
+            print('\n'.join(lines), file=fw)"""
 
     
     def _gen_testbench_2(self, result_msg: str) -> list:
@@ -596,8 +653,8 @@ class Explorer(Checker):
 
         return clk_progress + trace
     
-    def _gen_testbench(self, trace_info: list) -> list:
-        """ Create simulation testbench based on the counterexample trace """
+    """def _gen_testbench(self, trace_info: list) -> list:
+        ### Create simulation testbench based on the counterexample trace ###
 
         check_cond_vals = trace_info[0]
         input_vals = trace_info[1]
@@ -684,7 +741,7 @@ class Explorer(Checker):
 
         trace = ['initial begin'] + ['    {}'.format(line) for line in cycles] + ['end']
 
-        return clk_progress + trace
+        return clk_progress + trace"""
     
     
     def _get_target_regs(self, init=False):
@@ -783,8 +840,8 @@ class Explorer(Checker):
         return cmds
     
 
-    def _gen_trace_info_getter(self) -> list:
-        """ Generate the Jasper commands to extract trace info when the assertion fails """
+    """def _gen_trace_info_getter(self) -> list:
+        ### Generate the Jasper commands to extract trace info when the assertion fails ###
 
         cmds = [
             'set result [get_property_info output_equiv -list status]',
@@ -839,7 +896,7 @@ class Explorer(Checker):
             ''
         ]
 
-        return cmds
+        return cmds"""
     
 
     """ Utility functions """

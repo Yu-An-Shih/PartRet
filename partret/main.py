@@ -24,10 +24,10 @@ def main():
     # checker selection
     parser.add_argument('--setup', action='store_true',
                         help='set up files and scripts required for the partial retention check')
-    parser.add_argument('--explore', type=str, default='',
-                        help='explore (minimize/complete) the retention register list')
+    #parser.add_argument('--explore', type=str, default='',
+    #                    help='explore (minimize/complete) the retention register list')
     parser.add_argument('--optimize', type=str, default='combine',
-                        help='optimize the retention register list')
+                        help='optimize (set-explore/cex-guided/combine) the retention register list')
 
     # optional arguments
     #parser.add_argument('--src', type=str, default='',
@@ -72,21 +72,27 @@ def main():
         Setup(config, logger, args.work, args.verbosity)
         return None
     
-    if args.explore:
-        explorer = Explorer(config, logger, args.work, args.verbosity)
-
-        if args.explore == 'minimize':
-            explorer.minimize_retention_list()
-        elif args.explore == 'complete':
-            explorer.complete_retention_list()
-        else:
-            logger.dump('Error: unknown exploration method {}'.format(args.explore))
+    #if args.explore:
+    #    explorer = Explorer(config, logger, args.work, args.verbosity)
+#
+    #    if args.explore == 'minimize':
+    #        explorer.minimize_retention_list()
+    #    elif args.explore == 'complete':
+    #        explorer.complete_retention_list()
+    #    else:
+    #        logger.dump('Error: unknown exploration method {}'.format(args.explore))
     
     if args.optimize:
         explorer = Explorer(config, logger, args.work, args.verbosity)
 
         if args.optimize == 'combine':
             explorer.optimize_retention_list()
+        elif args.optimize == 'set-explore':
+            explorer.retention_set_exploration()
+        elif args.optimize == 'cex-guided':
+            explorer.cex_guided_retention_search()
+        else:
+            logger.dump('Error: unknown optimization method {}'.format(args.optimize))
     
     #end_time = time.time()
     #logger.dump('Execution time: {:.2f} seconds'.format(end_time - start_time))
