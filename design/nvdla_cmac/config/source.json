@@ -1,5 +1,18 @@
 {
-    "retention": [],
-    "non_retention": [],
-    "unknown": ["."]
+    "retention": [
+        "NV_NVDLA_cmac_inst.u_reg.cmac_a2csb_resp_pd",
+        "NV_NVDLA_cmac_inst.u_reg.dp2reg_consumer",
+        "NV_NVDLA_cmac_inst.u_reg.reg2dp_d0_op_en",
+        "NV_NVDLA_cmac_inst.u_reg.reg2dp_d1_op_en",
+        "NV_NVDLA_cmac_inst.u_reg.reg2dp_op_en_reg",
+        "NV_NVDLA_cmac_inst.u_reg.slcg_op_en_d1",
+        "NV_NVDLA_cmac_inst.u_reg.slcg_op_en_d2",
+        "NV_NVDLA_cmac_inst.u_reg.u_dual_reg_d0.conv_mode",
+        "NV_NVDLA_cmac_inst.u_reg.u_dual_reg_d0.proc_precision",
+        "NV_NVDLA_cmac_inst.u_reg.u_dual_reg_d1.conv_mode",
+        "NV_NVDLA_cmac_inst.u_reg.u_dual_reg_d1.proc_precision",
+        "NV_NVDLA_cmac_inst.u_reg.u_single_reg.producer"
+    ],
+    "non_retention": [".."],
+    "unknown": []
 }

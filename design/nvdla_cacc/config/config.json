@@ -1,0 +1,21 @@
+{
+    "RTL": [ "design/nvdla_cacc/rtl/" ],
+    "top_module": "NV_NVDLA_cacc_qchannel",
+    "clock": "nvdla_core_clk",
+    "resets": {
+        "nvdla_core_rstn": 0
+    },
+    "reset_input_values": {
+        "qreqn": "1'b1"
+    },
+
+    "power_interface_outputs": [
+        "qacceptn",
+        "qdeny"
+    ],
+    "restore_condition": "",
+    "check_condition": "qacceptn",
+
+    "src": "design/nvdla_cacc/config/source.json",
+    "dst": "design/nvdla_cacc/work/solution.json"
+}

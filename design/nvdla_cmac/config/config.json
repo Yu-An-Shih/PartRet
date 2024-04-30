@@ -6,7 +6,9 @@
         "nvdla_core_rstn": 0
     },
     "reset_input_values": {
-        "qreqn": "1'b1"
+        "qreqn": "1'b1",
+        "sc2mac_dat_pvld": "1'b0",
+        "sc2mac_wt_pvld": "1'b0"
     },
     "non_resettable_regs": [
         "NV_NVDLA_cmac_inst.u_core.in_dat_pd_d1",
