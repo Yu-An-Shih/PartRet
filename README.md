@@ -35,3 +35,7 @@ For example: `python partret.py design/spi/config/config.json --optimize cex-gui
 This command executes the CEX-guided retention register search algorithm. To reproduce our results, please keep the provided `wrapper.sv` and `ret_checker.tcl` files in `<work_dir>`. Information such as runtime will be recorded in `<log_file>`. The identified partial retention set can be found in a solution file in `<work_dir>`. By default, the file is named `solution.json`.
 
 ## Software dependencies
+
+- [Yosys](https://github.com/YosysHQ/yosys), version 0.33
+- JasperGold FPV App, version 2021.03
+- [Icarus Verilog](https://github.com/steveicarus/iverilog), version 11.0
