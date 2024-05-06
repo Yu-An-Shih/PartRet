@@ -893,6 +893,7 @@ NV_NVDLA_cmac NV_NVDLA_cmac_inst (
     ,.mac2accu_pvld (mac2accu_pvld)                //|> o
 
     ,.reg2dp_op_en(reg2dp_op_en)
+    ,.pwr_state(state)
 );
 
 always @(*) begin
@@ -903,7 +904,11 @@ always @(*) begin
     case (state)
         ST_STOP: begin
             if (qreqn) begin
-                state_next = ST_RUN;
+                counter_next = counter + 3'b1;
+                if (counter == 3'b001) begin
+                    state_next = ST_RUN;
+                    counter_next = 3'b0;
+                end
             end
         end
         ST_RUN: begin

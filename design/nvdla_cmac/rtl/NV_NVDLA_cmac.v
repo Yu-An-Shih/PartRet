@@ -295,6 +295,7 @@ module NV_NVDLA_cmac (
   ,mac2accu_pvld                 //|> o
 
   ,reg2dp_op_en
+  ,pwr_state
   );
 //
 // NV_NVDLA_cmac_ports.v
@@ -596,6 +597,11 @@ input   dla_clk_ovr_on_sync;
 input   global_clk_ovr_on_sync;
 input   tmc2slcg_disable_clock_gating;
 
+input [1:0] pwr_state;
+
+wire reg2dp_op_en_int;
+assign reg2dp_op_en_int = (pwr_state == 2'b01) ? reg2dp_op_en : 1'b0;
+
 //==========================================================
 // core
 //==========================================================
@@ -876,7 +882,7 @@ NV_NVDLA_CMAC_core u_core (
   ,.mac2accu_data6                (mac2accu_data6[175:0])         //|> o
   ,.mac2accu_data7                (mac2accu_data7[175:0])         //|> o
   ,.mac2accu_pd                   (mac2accu_pd[8:0])              //|> o
-  ,.reg2dp_op_en                  (reg2dp_op_en[0])               //|< w
+  ,.reg2dp_op_en                  (reg2dp_op_en_int)               //|< w  // Modified
   ,.reg2dp_conv_mode              (reg2dp_conv_mode[0])           //|< w
   ,.reg2dp_proc_precision         (reg2dp_proc_precision[1:0])    //|< w
   ,.dp2reg_done                   (dp2reg_done)                   //|> w
