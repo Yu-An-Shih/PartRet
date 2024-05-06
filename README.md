@@ -7,7 +7,6 @@
 ```
 python partret.py <config_file> --setup [-w <work_dir>] [-o <log_file>]
 ```
-
 For example: `python partret.py design/spi/config/config.json --setup -w design/spi/work/ -o design/spi/work/setup.log`
 
 This command parses design information from `<config_file>` to set up the verification framework. The following files will be generated in `<work_dir>`:
@@ -17,8 +16,22 @@ This command parses design information from `<config_file>` to set up the verifi
 
 In `wrapper.sv` and `ret_checker.tcl`, the user can find instructions for adding interface constraints, customizing functional equivalence properties, etc. To let users reproduce our results, we provide a work directory with our own customized `wrapper.sv` and `ret_checker.tcl` for each design.
 
-### Retention set exploration
+### 2. Retention set exploration (with CEX-guided approach)
 
-### CEX-guided retention register search
+```
+python partret.py <config_file> --optimize combine [-w <work_dir>] [-o <log_file>]
+```
+For example: `python partret.py design/spi/config/config.json --optimize combine -w design/spi/work/ -o design/spi/work/set_explore.log`
+
+This command executes the retention set exploration algorithm. To reproduce our results, please keep the provided `wrapper.sv` and `ret_checker.tcl` files in `<work_dir>`. Information such as runtime will be recorded in `<log_file>`. The identified partial retention set can be found in a solution file in `<work_dir>`. By default, the file is named `solution.json`.
+
+### 3. CEX-guided retention register search
+
+```
+python partret.py <config_file> --optimize cex-guided [-w <work_dir>] [-o <log_file>]
+```
+For example: `python partret.py design/spi/config/config.json --optimize cex-guided -w design/spi/work/ -o design/spi/work/cex_guided.log`
+
+This command executes the CEX-guided retention register search algorithm. To reproduce our results, please keep the provided `wrapper.sv` and `ret_checker.tcl` files in `<work_dir>`. Information such as runtime will be recorded in `<log_file>`. The identified partial retention set can be found in a solution file in `<work_dir>`. By default, the file is named `solution.json`.
 
 ## Software dependencies
