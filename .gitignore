@@ -28,5 +28,8 @@ design/nvdla*/*
 !design/nvdla*/config/
 !design/nvdla*/rtl/
 
+!design/*/work/wrapper.sv
+!design/*/work/ret_checker.tcl
+
 # Log files
 *.log
