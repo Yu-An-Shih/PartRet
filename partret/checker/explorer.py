@@ -122,6 +122,10 @@ class Explorer(Checker):
             ret_checker += self._gen_trace_info_getter(self._unknown_regs)
             ret_checker += ['exit']
 
+            # Debug
+            #with open(os.path.join(self._workdir, 'debug.tcl'), 'w') as fw:
+            #    print('\n'.join(ret_checker), file=fw)
+
             # generate partial retention design
             self._gen_partret_design(self._non_ret_regs | self._unknown_regs)
 
@@ -158,6 +162,9 @@ class Explorer(Checker):
                 self._logger.dump('Timeout: Solving time ({}s) is larger than {}s.'.format(self._timer.get_elapsed_time(), Config.DEFAULT_TIMEOUT))
                 self._logger.dump('Exitting...')
                 break
+            
+            # Debug
+            #sys.exit(0)
         
         #assert not self._unknown_regs
         #assert self._regs == (self._ret_regs | self._non_ret_regs)

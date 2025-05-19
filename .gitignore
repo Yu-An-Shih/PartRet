@@ -7,6 +7,8 @@ jgproject*/
 
 # Design directories
 design/aquarius/
+design/aes/
+design/jpeg/
 
 design/spi/*
 !design/spi/config/
