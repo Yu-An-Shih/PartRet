@@ -1,4 +1,6 @@
-# Automatic Verification and Identification of Partial Retention Register Sets for Low Power Designs
+## Publication
+
+Automatic Verification and Identification of Partial Retention Register Sets for Low Power Designs ([ICCAD'24](https://dl.acm.org/doi/abs/10.1145/3676536.3676758))
 
 ## Reproducing the results
 
@@ -39,3 +41,7 @@ This command executes the CEX-guided retention register search algorithm. To rep
 - [Yosys](https://github.com/YosysHQ/yosys), version 0.33
 - JasperGold FPV App, version 2021.03
 - [Icarus Verilog](https://github.com/steveicarus/iverilog), version 11.0
+
+## Contact
+
+Yu-An Shih - yashih@princeton.edu
